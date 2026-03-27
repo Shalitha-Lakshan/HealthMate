@@ -1,0 +1,16 @@
+{
+	"name": "healthmate-backend",
+	"version": "1.0.0",
+	"private": true,
+	"scripts": {
+		"dev:gateway": "npm --prefix gateway run dev",
+		"dev:auth": "npm --prefix services/auth-service run dev",
+		"dev:patient": "npm --prefix services/patient-service run dev",
+		"dev:doctor": "npm --prefix services/doctor-service run dev",
+		"dev:appointment": "npm --prefix services/appointment-service run dev",
+		"dev:payment": "npm --prefix services/payment-service run dev",
+		"dev:notification": "npm --prefix services/notification-service run dev",
+		"dev:telemedicine": "npm --prefix services/telemedicine-service run dev",
+		"dev:admin": "npm --prefix services/admin-service run dev"
+	}
+}
