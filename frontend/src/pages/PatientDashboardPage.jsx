@@ -1,6 +1,7 @@
 import { useState } from "react";
 import DashboardShell from "../components/DashboardShell";
 import PatientTelemedicinePage from "./PatientTelemedicinePage";
+import SymptomChatbot from "../components/SymptomChatbot";
 import { getStoredUser } from "../utils/auth";
 import { createAppointment, fetchMyAppointments } from "../services/appointmentApi";
 import { fetchDoctors } from "../services/authApi";
@@ -423,6 +424,8 @@ function PatientDashboardPage() {
 				<PatientTelemedicinePage />
 			) : activeMenuItem === "Appointments" ? (
 				renderAppointments()
+			) : activeMenuItem === "AI Assistant" ? (
+				<SymptomChatbot />
 			) : (
 				renderOverview()
 			)}

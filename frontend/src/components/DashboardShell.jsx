@@ -3,7 +3,7 @@ import { useNavigate } from "react-router-dom";
 import { clearAuthStorage, getStoredUser } from "../utils/auth";
 
 const menuByRole = {
-	patient: ["Overview", "Appointments", "Medical Reports", "Telemedicine"],
+	patient: ["Overview", "Appointments", "Medical Reports", "Telemedicine", "AI Assistant"],
 	doctor: ["Overview", "Schedule", "Consultations", "Prescriptions", "Telemedicine"],
 	admin: ["Overview", "User Management", "Doctor Verification", "Operations"],
 };
