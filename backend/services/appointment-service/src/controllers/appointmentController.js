@@ -6,6 +6,8 @@ const SLOT_END_HOUR = 17;
 const PAYMENT_HOLD_MINUTES = Number(process.env.APPOINTMENT_PAYMENT_HOLD_MINUTES || 10);
 const DEFAULT_CONSULTATION_FEE = Number(process.env.DEFAULT_CONSULTATION_FEE || 3500);
 const APPOINTMENT_INTERNAL_TOKEN = process.env.APPOINTMENT_INTERNAL_TOKEN || "healthmate-internal-token";
+const NOTIFICATION_SERVICE_URL = process.env.NOTIFICATION_SERVICE_URL || "http://localhost:5006/api/notifications";
+const NOTIFICATION_INTERNAL_TOKEN = process.env.NOTIFICATION_INTERNAL_TOKEN || "healthmate-internal-token";
 
 const normalizeDateOnly = (dateValue) => {
 	const date = new Date(dateValue);
@@ -49,6 +51,32 @@ const releaseExpiredPendingPayments = async () => {
 	);
 };
 
+const sendAppointmentNotification = async ({ eventType, appointment }) => {
+	try {
+		await fetch(`${NOTIFICATION_SERVICE_URL}/events/appointment`, {
+			method: "POST",
+			headers: {
+				"Content-Type": "application/json",
+				"x-internal-token": NOTIFICATION_INTERNAL_TOKEN,
+			},
+			body: JSON.stringify({
+				eventType,
+				appointmentId: appointment.appointmentId,
+				appointmentDate: appointment.appointmentDate,
+				slotTime: appointment.slotTime,
+				patientName: appointment.patientName,
+				doctorName: appointment.doctorName,
+				patientEmail: appointment.patientEmail,
+				patientPhone: appointment.patientPhone,
+				doctorEmail: appointment.doctorEmail,
+				doctorPhone: appointment.doctorPhone,
+			}),
+		});
+	} catch (error) {
+		console.error("failed to dispatch notification event", error.message);
+	}
+};
+
 const finalizeAppointmentPayment = async ({ appointment, paymentMethod, paymentReference }) => {
 	if (appointment.paymentExpiresAt && appointment.paymentExpiresAt < new Date()) {
 		appointment.status = "expired";
@@ -66,6 +94,7 @@ const finalizeAppointmentPayment = async ({ appointment, paymentMethod, paymentR
 	appointment.paymentStatus = "paid";
 	appointment.status = "confirmed";
 	await appointment.save();
+	await sendAppointmentNotification({ eventType: "APPOINTMENT_CONFIRMED", appointment });
 
 	return {
 		success: true,
@@ -118,13 +147,29 @@ const createAppointmentHold = async (req, res) => {
 	try {
 		await releaseExpiredPendingPayments();
 
-		const { patientName, patientAge, doctorId, doctorName, specialty, appointmentDate, slotTime, mode, reason } = req.body;
+		const {
+			patientName,
+			patientAge,
+			patientPhone,
+			doctorId,
+			doctorName,
+			doctorEmail,
+			doctorPhone,
+			specialty,
+			appointmentDate,
+			slotTime,
+			mode,
+			reason,
+		} = req.body;
 
 		if (
 			!patientName ||
 			patientAge === undefined ||
+			!patientPhone ||
 			!doctorId ||
 			!doctorName ||
+			!doctorEmail ||
+			!doctorPhone ||
 			!specialty ||
 			!appointmentDate ||
 			!slotTime ||
@@ -132,7 +177,7 @@ const createAppointmentHold = async (req, res) => {
 		) {
 			return res.status(400).json({
 				message:
-					"patientName, patientAge, doctorId, doctorName, specialty, appointmentDate, slotTime, and reason are required",
+					"patientName, patientAge, patientPhone, doctorId, doctorName, doctorEmail, doctorPhone, specialty, appointmentDate, slotTime, and reason are required",
 			});
 		}
 
@@ -176,9 +221,12 @@ const createAppointmentHold = async (req, res) => {
 			patientId: req.user.sub,
 			patientName: patientName.trim(),
 			patientEmail: req.user.email,
+			patientPhone: patientPhone.trim(),
 			patientAge: parsedAge,
 			doctorId,
 			doctorName: doctorName.trim(),
+			doctorEmail: doctorEmail.trim().toLowerCase(),
+			doctorPhone: doctorPhone.trim(),
 			specialty: specialty.trim(),
 			appointmentDateTime: parsedDate,
 			appointmentDate: normalizedDate,
@@ -312,6 +360,36 @@ const confirmAppointmentPaymentInternal = async (req, res) => {
 	}
 };
 
+const completeConsultation = async (req, res) => {
+	try {
+		const { id } = req.params;
+
+		const appointment = await Appointment.findById(id);
+		if (!appointment) {
+			return res.status(404).json({ message: "appointment not found" });
+		}
+
+		if (String(appointment.doctorId) !== String(req.user.sub)) {
+			return res.status(403).json({ message: "you can only complete your own consultations" });
+		}
+
+		if (appointment.status !== "confirmed") {
+			return res.status(400).json({ message: "only confirmed appointments can be completed" });
+		}
+
+		appointment.status = "completed";
+		await appointment.save();
+		await sendAppointmentNotification({ eventType: "CONSULTATION_COMPLETED", appointment });
+
+		return res.status(200).json({
+			message: "consultation marked as completed",
+			appointment,
+		});
+	} catch (error) {
+		return res.status(500).json({ message: "failed to complete consultation", error: error.message });
+	}
+};
+
 module.exports = {
 	createAppointmentHold,
 	getAvailableSlots,
@@ -319,4 +397,5 @@ module.exports = {
 	getDoctorAppointments,
 	confirmAppointmentPayment,
 	confirmAppointmentPaymentInternal,
+	completeConsultation,
 };

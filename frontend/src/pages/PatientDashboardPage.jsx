@@ -17,6 +17,8 @@ const INITIAL_FORM_STATE = {
 	patientAge: "",
 	doctorId: "",
 	doctorName: "",
+	doctorEmail: "",
+	doctorPhone: "",
 	specialty: "",
 	appointmentDate: "",
 	slotTime: "",
@@ -131,6 +133,8 @@ function PatientDashboardPage() {
 				specialty: value,
 				doctorId: "",
 				doctorName: "",
+				doctorEmail: "",
+				doctorPhone: "",
 				appointmentDate: "",
 				slotTime: "",
 			}));
@@ -145,6 +149,8 @@ function PatientDashboardPage() {
 				...prev,
 				doctorId: value,
 				doctorName: selectedDoctor?.name || "",
+				doctorEmail: selectedDoctor?.email || "",
+				doctorPhone: selectedDoctor?.phoneNumber || "",
 				appointmentDate: "",
 				slotTime: "",
 			}));
@@ -177,8 +183,11 @@ function PatientDashboardPage() {
 			const payload = {
 				patientName: formData.patientName,
 				patientAge: Number(formData.patientAge),
+				patientPhone: user.phoneNumber,
 				doctorId: formData.doctorId,
 				doctorName: formData.doctorName,
+				doctorEmail: formData.doctorEmail,
+				doctorPhone: formData.doctorPhone,
 				specialty: formData.specialty,
 				appointmentDate: formData.appointmentDate,
 				slotTime: formData.slotTime,

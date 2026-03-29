@@ -178,13 +178,14 @@ const getDoctors = async (req, res) => {
 		}
 
 		const doctors = await User.find(query)
-			.select("name email doctorProfile.specialization doctorProfile.yearsOfExperience")
+			.select("name email phoneNumber doctorProfile.specialization doctorProfile.yearsOfExperience")
 			.sort({ name: 1 });
 
 		const payload = doctors.map((doctor) => ({
 			id: doctor._id,
 			name: doctor.name,
 			email: doctor.email,
+			phoneNumber: doctor.phoneNumber,
 			specialty: doctor.doctorProfile?.specialization || "General",
 			yearsOfExperience: doctor.doctorProfile?.yearsOfExperience ?? null,
 		}));

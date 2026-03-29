@@ -31,6 +31,11 @@ const appointmentSchema = new mongoose.Schema(
 			trim: true,
 			lowercase: true,
 		},
+		patientPhone: {
+			type: String,
+			required: true,
+			trim: true,
+		},
 		patientAge: {
 			type: Number,
 			required: true,
@@ -43,6 +48,17 @@ const appointmentSchema = new mongoose.Schema(
 			index: true,
 		},
 		doctorName: {
+			type: String,
+			required: true,
+			trim: true,
+		},
+		doctorEmail: {
+			type: String,
+			required: true,
+			trim: true,
+			lowercase: true,
+		},
+		doctorPhone: {
 			type: String,
 			required: true,
 			trim: true,
