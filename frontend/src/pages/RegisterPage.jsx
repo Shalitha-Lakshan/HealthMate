@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import AuthLayout from "../components/AuthLayout";
+import { DOCTOR_SPECIALIZATIONS } from "../constants/doctorSpecializations";
 import { registerUser } from "../services/authApi";
 
 function RegisterPage() {
@@ -170,13 +171,11 @@ function RegisterPage() {
 								className="w-full rounded-xl border border-slate-300 px-4 py-2.5 text-sm outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
 							>
 								<option value="">Select specialization</option>
-								<option value="General Physician">General Physician</option>
-								<option value="Cardiology">Cardiology</option>
-								<option value="Dermatology">Dermatology</option>
-								<option value="Pediatrics">Pediatrics</option>
-								<option value="Neurology">Neurology</option>
-								<option value="Orthopedics">Orthopedics</option>
-								<option value="Psychiatry">Psychiatry</option>
+								{DOCTOR_SPECIALIZATIONS.map((specialization) => (
+									<option key={specialization} value={specialization}>
+										{specialization}
+									</option>
+								))}
 							</select>
 						</div>
 

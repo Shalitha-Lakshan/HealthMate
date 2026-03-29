@@ -37,6 +37,11 @@ const appointmentSchema = new mongoose.Schema(
 			min: 0,
 			max: 120,
 		},
+		doctorId: {
+			type: mongoose.Schema.Types.ObjectId,
+			required: true,
+			index: true,
+		},
 		doctorName: {
 			type: String,
 			required: true,
@@ -51,6 +56,16 @@ const appointmentSchema = new mongoose.Schema(
 			type: Date,
 			required: true,
 		},
+		appointmentDate: {
+			type: String,
+			required: true,
+			trim: true,
+		},
+		slotTime: {
+			type: String,
+			required: true,
+			trim: true,
+		},
 		mode: {
 			type: String,
 			enum: ["online", "in-person"],
@@ -64,11 +79,50 @@ const appointmentSchema = new mongoose.Schema(
 		},
 		status: {
 			type: String,
-			enum: ["pending", "confirmed", "cancelled", "completed"],
+			enum: [
+				"pending_payment",
+				"pending",
+				"confirmed",
+				"cancelled",
+				"completed",
+				"rejected",
+				"payment_failed",
+				"expired",
+			],
+			default: "pending_payment",
+		},
+		paymentStatus: {
+			type: String,
+			enum: ["pending", "paid", "failed"],
 			default: "pending",
+		},
+		consultationFee: {
+			type: Number,
+			required: true,
+			min: 0,
+			default: 3500,
+		},
+		currency: {
+			type: String,
+			default: "LKR",
+			uppercase: true,
+			trim: true,
+		},
+		paymentMethod: {
+			type: String,
+			trim: true,
+		},
+		paymentReference: {
+			type: String,
+			trim: true,
+		},
+		paymentExpiresAt: {
+			type: Date,
 		},
 	},
 	{ timestamps: true }
 );
+
+appointmentSchema.index({ doctorId: 1, appointmentDate: 1, slotTime: 1 });
 
 module.exports = mongoose.model("Appointment", appointmentSchema);
