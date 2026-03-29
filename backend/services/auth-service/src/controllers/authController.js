@@ -113,7 +113,12 @@ const register = async (req, res) => {
 					: undefined,
 		});
 
-		const token = generateAccessToken({ sub: user._id.toString(), role: user.role, email: user.email });
+		const token = generateAccessToken({
+			sub: user._id.toString(),
+			name: user.name,
+			role: user.role,
+			email: user.email,
+		});
 
 		return res.status(201).json({
 			message: "user registered successfully",
@@ -143,7 +148,12 @@ const login = async (req, res) => {
 			return res.status(401).json({ message: "invalid credentials" });
 		}
 
-		const token = generateAccessToken({ sub: user._id.toString(), role: user.role, email: user.email });
+		const token = generateAccessToken({
+			sub: user._id.toString(),
+			name: user.name,
+			role: user.role,
+			email: user.email,
+		});
 
 		return res.status(200).json({
 			message: "login successful",
@@ -155,7 +165,38 @@ const login = async (req, res) => {
 	}
 };
 
+const getDoctors = async (req, res) => {
+	try {
+		const specialtyFilter = (req.query.specialty || "").trim();
+		const query = {
+			role: "doctor",
+			"doctorProfile.specialization": { $exists: true, $ne: "" },
+		};
+
+		if (specialtyFilter) {
+			query["doctorProfile.specialization"] = specialtyFilter;
+		}
+
+		const doctors = await User.find(query)
+			.select("name email doctorProfile.specialization doctorProfile.yearsOfExperience")
+			.sort({ name: 1 });
+
+		const payload = doctors.map((doctor) => ({
+			id: doctor._id,
+			name: doctor.name,
+			email: doctor.email,
+			specialty: doctor.doctorProfile?.specialization || "General",
+			yearsOfExperience: doctor.doctorProfile?.yearsOfExperience ?? null,
+		}));
+
+		return res.status(200).json({ doctors: payload });
+	} catch (error) {
+		return res.status(500).json({ message: "failed to fetch doctors", error: error.message });
+	}
+};
+
 module.exports = {
 	register,
 	login,
+	getDoctors,
 };

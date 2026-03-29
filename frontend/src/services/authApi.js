@@ -16,3 +16,10 @@ export const loginUser = async (payload) => {
 	const response = await api.post("/login", payload);
 	return response.data;
 };
+
+export const fetchDoctors = async (specialty) => {
+	const response = await api.get("/doctors", {
+		params: specialty ? { specialty } : undefined,
+	});
+	return response.data;
+};
