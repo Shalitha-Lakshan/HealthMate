@@ -1,24 +1,21 @@
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { clearAuthStorage, getStoredUser } from "../utils/auth";
 
 const menuByRole = {
 	patient: ["Overview", "Appointments", "Medical Reports", "Telemedicine"],
-	doctor: ["Overview", "Schedule", "Consultations", "Prescriptions"],
+	doctor: ["Overview", "Schedule", "Consultations", "Prescriptions", "Telemedicine"],
 	admin: ["Overview", "User Management", "Doctor Verification", "Operations"],
 };
 
-function DashboardShell({ role = "patient", title, subtitle, children }) {
+function DashboardShell({ role = "patient", title, subtitle, children, onMenuChange, initialActiveMenuItem }) {
 	const navigate = useNavigate();
 	const user = getStoredUser() || {};
 	const [isSidebarOpen, setIsSidebarOpen] = useState(false);
-	const [activeMenuItem, setActiveMenuItem] = useState("Overview");
 
 	const menuItems = useMemo(() => menuByRole[role] || menuByRole.patient, [role]);
-
-	useEffect(() => {
-		setActiveMenuItem(menuItems[0]);
-	}, [menuItems]);
+	const defaultMenuItem = initialActiveMenuItem || menuItems[0] || "Overview";
+	const [activeMenuItem, setActiveMenuItem] = useState(defaultMenuItem);
 
 	const handleLogout = () => {
 		clearAuthStorage();
@@ -53,12 +50,15 @@ function DashboardShell({ role = "patient", title, subtitle, children }) {
 					</div>
 
 					<nav className="mt-5 space-y-2">
-						{menuItems.map((item, index) => (
+						{menuItems.map((item) => (
 							<button
 								type="button"
 								key={item}
 								onClick={() => {
 									setActiveMenuItem(item);
+									if (typeof onMenuChange === "function") {
+										onMenuChange(item);
+									}
 									setIsSidebarOpen(false);
 								}}
 								className={`flex items-center justify-between rounded-xl px-3 py-2.5 text-sm font-medium transition ${
