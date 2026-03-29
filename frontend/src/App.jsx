@@ -6,6 +6,9 @@ import RegisterPage from "./pages/RegisterPage";
 import PatientDashboardPage from "./pages/PatientDashboardPage";
 import DoctorDashboardPage from "./pages/DoctorDashboardPage";
 import AdminDashboardPage from "./pages/AdminDashboardPage";
+import PatientAppointmentsPage from "./pages/appointments/PatientAppointmentsPage";
+import DoctorListPage from "./pages/appointments/DoctorListPage";
+import BookAppointmentPage from "./pages/appointments/BookAppointmentPage";
 import { getDashboardPathForRole, getStoredUser } from "./utils/auth";
 
 const ProtectedRoute = ({ children, allowedRoles }) => {
@@ -55,6 +58,30 @@ function App() {
 					element={
 						<ProtectedRoute allowedRoles={["patient"]}>
 							<PatientDashboardPage />
+						</ProtectedRoute>
+					}
+				/>
+				<Route
+					path="/dashboard/patient/appointments"
+					element={
+						<ProtectedRoute allowedRoles={["patient"]}>
+							<PatientAppointmentsPage />
+						</ProtectedRoute>
+					}
+				/>
+				<Route
+					path="/dashboard/patient/book"
+					element={
+						<ProtectedRoute allowedRoles={["patient"]}>
+							<DoctorListPage />
+						</ProtectedRoute>
+					}
+				/>
+				<Route
+					path="/dashboard/patient/book/:id"
+					element={
+						<ProtectedRoute allowedRoles={["patient"]}>
+							<BookAppointmentPage />
 						</ProtectedRoute>
 					}
 				/>

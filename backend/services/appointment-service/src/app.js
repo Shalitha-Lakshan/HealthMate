@@ -10,4 +10,8 @@ app.get("/health", (req, res) => {
 	res.status(200).json({ service: "appointment-service", status: "ok" });
 });
 
+// Routes
+const appointmentRoutes = require("./routes/appointmentRoutes");
+app.use("/api/appointments", appointmentRoutes);
+
 module.exports = app;
