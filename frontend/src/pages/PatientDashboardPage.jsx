@@ -1,15 +1,15 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import DashboardShell from "../components/DashboardShell";
 import PatientTelemedicinePage from "./PatientTelemedicinePage";
 import SymptomChatbot from "../components/SymptomChatbot";
 import { DOCTOR_SPECIALIZATIONS } from "../constants/doctorSpecializations";
 import { getStoredUser } from "../utils/auth";
 import {
-	confirmAppointmentPayment,
 	createAppointmentHold,
 	fetchAvailableSlots,
 	fetchMyAppointments,
 } from "../services/appointmentApi";
+import { completePayment, initiatePayment } from "../services/paymentApi";
 import { fetchDoctors } from "../services/authApi";
 
 const INITIAL_FORM_STATE = {
@@ -45,7 +45,10 @@ const formatAppointmentDate = (value) => {
 
 function PatientDashboardPage() {
 	const user = getStoredUser() || {};
-	const [activeMenuItem, setActiveMenuItem] = useState("Overview");
+	const [activeMenuItem, setActiveMenuItem] = useState(() => {
+		const paymentStatus = new URLSearchParams(window.location.search).get("payment");
+		return paymentStatus ? "Appointments" : "Overview";
+	});
 	const [formData, setFormData] = useState({ ...INITIAL_FORM_STATE, patientName: user.name || "" });
 	const [appointments, setAppointments] = useState([]);
 	const [doctors, setDoctors] = useState([]);
@@ -205,23 +208,84 @@ function PatientDashboardPage() {
 		setIsPaying(true);
 
 		try {
-			await confirmAppointmentPayment(reservedAppointment._id, {
-				paymentMethod: "mock-card",
-				paymentReference: `PAY-${Date.now()}`,
+			const initiated = await initiatePayment({
+				appointmentId: reservedAppointment._id,
+				amount: reservedAppointment.consultationFee,
+				currency: reservedAppointment.currency,
+				provider: "stripe",
+				successUrl: `${window.location.origin}/dashboard/patient?payment=success`,
+				cancelUrl: `${window.location.origin}/dashboard/patient?payment=cancel`,
 			});
 
-			setSuccessMessage("Payment successful. Appointment confirmed.");
-			setReservedAppointment(null);
-			setFormData({ ...INITIAL_FORM_STATE, patientName: user.name || "" });
-			setAvailableSlots([]);
-			await loadDoctors();
-			await loadAppointments();
+			if (!initiated.checkoutUrl) {
+				setErrorMessage("Unable to create Stripe checkout session.");
+				return;
+			}
+
+			window.location.href = initiated.checkoutUrl;
 		} catch (error) {
 			setErrorMessage(error.response?.data?.message || "Payment failed.");
 		} finally {
 			setIsPaying(false);
 		}
 	};
+
+	useEffect(() => {
+		if (activeMenuItem !== "Appointments") {
+			return;
+		}
+
+		loadDoctors();
+		loadAppointments();
+	}, [activeMenuItem]);
+
+	useEffect(() => {
+		const handleStripeReturn = async () => {
+			const params = new URLSearchParams(window.location.search);
+			const paymentStatus = params.get("payment");
+			const transactionId = params.get("tx");
+			const sessionId = params.get("session_id");
+
+			if (!paymentStatus) {
+				return;
+			}
+
+			setActiveMenuItem("Appointments");
+			setErrorMessage("");
+			setSuccessMessage("");
+
+			if (paymentStatus === "cancel") {
+				setErrorMessage("Payment cancelled. Your slot is still pending until expiry.");
+				window.history.replaceState({}, "", "/dashboard/patient");
+				await loadAppointments();
+				return;
+			}
+
+			if (paymentStatus === "success" && transactionId && sessionId) {
+				setIsPaying(true);
+				try {
+					await completePayment(transactionId, {
+						paymentMethod: "stripe-card",
+						gatewaySessionId: sessionId,
+					});
+
+					setSuccessMessage("Payment successful. Appointment confirmed.");
+					setReservedAppointment(null);
+					setFormData({ ...INITIAL_FORM_STATE, patientName: user.name || "" });
+					setAvailableSlots([]);
+					await loadDoctors();
+					await loadAppointments();
+				} catch (error) {
+					setErrorMessage(error.response?.data?.message || "Payment verification failed.");
+				} finally {
+					setIsPaying(false);
+					window.history.replaceState({}, "", "/dashboard/patient");
+				}
+			}
+		};
+
+		handleStripeReturn();
+	}, [user.name]);
 
 	const renderOverview = () => (
 		<>
@@ -571,13 +635,9 @@ function PatientDashboardPage() {
 	return (
 		<DashboardShell
 			role="patient"
-			initialActiveMenuItem="Overview"
+			initialActiveMenuItem={activeMenuItem}
 			onMenuChange={(menuItem) => {
 				setActiveMenuItem(menuItem);
-				if (menuItem === "Appointments") {
-					loadDoctors();
-					loadAppointments();
-				}
 			}}
 			title={`Welcome, ${user.name || "Patient"}`}
 			subtitle="Manage appointments, reports, and telemedicine sessions."

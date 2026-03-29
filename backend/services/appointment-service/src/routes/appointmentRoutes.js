@@ -5,10 +5,13 @@ const {
 	getMyAppointments,
 	getDoctorAppointments,
 	confirmAppointmentPayment,
+	confirmAppointmentPaymentInternal,
 } = require("../controllers/appointmentController");
 const { requireAuth, authorizeRoles } = require("../middlewares/authMiddleware");
 
 const router = express.Router();
+
+router.post("/internal/payment-confirmation", confirmAppointmentPaymentInternal);
 
 router.use(requireAuth);
 

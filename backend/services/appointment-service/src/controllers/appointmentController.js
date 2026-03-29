@@ -5,6 +5,7 @@ const SLOT_START_HOUR = 9;
 const SLOT_END_HOUR = 17;
 const PAYMENT_HOLD_MINUTES = Number(process.env.APPOINTMENT_PAYMENT_HOLD_MINUTES || 10);
 const DEFAULT_CONSULTATION_FEE = Number(process.env.DEFAULT_CONSULTATION_FEE || 3500);
+const APPOINTMENT_INTERNAL_TOKEN = process.env.APPOINTMENT_INTERNAL_TOKEN || "healthmate-internal-token";
 
 const normalizeDateOnly = (dateValue) => {
 	const date = new Date(dateValue);
@@ -46,6 +47,31 @@ const releaseExpiredPendingPayments = async () => {
 			},
 		}
 	);
+};
+
+const finalizeAppointmentPayment = async ({ appointment, paymentMethod, paymentReference }) => {
+	if (appointment.paymentExpiresAt && appointment.paymentExpiresAt < new Date()) {
+		appointment.status = "expired";
+		appointment.paymentStatus = "failed";
+		await appointment.save();
+		return {
+			success: false,
+			statusCode: 400,
+			message: "payment window expired. book again.",
+		};
+	}
+
+	appointment.paymentMethod = paymentMethod;
+	appointment.paymentReference = paymentReference?.trim();
+	appointment.paymentStatus = "paid";
+	appointment.status = "confirmed";
+	await appointment.save();
+
+	return {
+		success: true,
+		statusCode: 200,
+		message: "payment successful. appointment confirmed",
+	};
 };
 
 const getAvailableSlots = async (req, res) => {
@@ -218,21 +244,67 @@ const confirmAppointmentPayment = async (req, res) => {
 			return res.status(400).json({ message: "appointment is not in pending payment state" });
 		}
 
-		if (appointment.paymentExpiresAt && appointment.paymentExpiresAt < new Date()) {
-			appointment.status = "expired";
-			appointment.paymentStatus = "failed";
-			await appointment.save();
-			return res.status(400).json({ message: "payment window expired. book again." });
+		const result = await finalizeAppointmentPayment({
+			appointment,
+			paymentMethod,
+			paymentReference,
+		});
+
+		if (!result.success) {
+			return res.status(result.statusCode).json({ message: result.message });
 		}
 
-		appointment.paymentMethod = paymentMethod;
-		appointment.paymentReference = paymentReference?.trim();
-		appointment.paymentStatus = "paid";
-		appointment.status = "confirmed";
-		await appointment.save();
+		return res.status(200).json({
+			message: result.message,
+			appointment,
+		});
+	} catch (error) {
+		return res.status(500).json({ message: "failed to confirm payment", error: error.message });
+	}
+};
+
+const confirmAppointmentPaymentInternal = async (req, res) => {
+	try {
+		await releaseExpiredPendingPayments();
+
+		const internalToken = req.headers["x-internal-token"];
+		if (!internalToken || internalToken !== APPOINTMENT_INTERNAL_TOKEN) {
+			return res.status(401).json({ message: "invalid internal service token" });
+		}
+
+		const { appointmentId, patientId, paymentMethod, paymentReference } = req.body;
+
+		if (!appointmentId || !patientId || !paymentMethod || !paymentReference) {
+			return res
+				.status(400)
+				.json({ message: "appointmentId, patientId, paymentMethod and paymentReference are required" });
+		}
+
+		const appointment = await Appointment.findById(appointmentId);
+		if (!appointment) {
+			return res.status(404).json({ message: "appointment not found" });
+		}
+
+		if (String(appointment.patientId) !== String(patientId)) {
+			return res.status(403).json({ message: "appointment does not belong to patient" });
+		}
+
+		if (appointment.status !== "pending_payment" || appointment.paymentStatus !== "pending") {
+			return res.status(400).json({ message: "appointment is not in pending payment state" });
+		}
+
+		const result = await finalizeAppointmentPayment({
+			appointment,
+			paymentMethod,
+			paymentReference,
+		});
+
+		if (!result.success) {
+			return res.status(result.statusCode).json({ message: result.message });
+		}
 
 		return res.status(200).json({
-			message: "payment successful. appointment confirmed",
+			message: result.message,
 			appointment,
 		});
 	} catch (error) {
@@ -246,4 +318,5 @@ module.exports = {
 	getMyAppointments,
 	getDoctorAppointments,
 	confirmAppointmentPayment,
+	confirmAppointmentPaymentInternal,
 };
