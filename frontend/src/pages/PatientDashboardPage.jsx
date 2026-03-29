@@ -1,6 +1,7 @@
 import { useState } from "react";
 import DashboardShell from "../components/DashboardShell";
 import PatientTelemedicinePage from "./PatientTelemedicinePage";
+import SymptomChatbot from "../components/SymptomChatbot";
 import { getStoredUser } from "../utils/auth";
 
 function PatientDashboardPage() {
@@ -30,6 +31,8 @@ function PatientDashboardPage() {
 		>
 			{activeMenuItem === "Telemedicine" ? (
 				<PatientTelemedicinePage />
+			) : activeMenuItem === "AI Assistant" ? (
+				<SymptomChatbot />
 			) : (
 				<>
 					<div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
