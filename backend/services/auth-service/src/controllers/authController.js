@@ -25,6 +25,7 @@ const sanitizeUser = (userDoc) => ({
 	email: userDoc.email,
 	phoneNumber: userDoc.phoneNumber,
 	role: userDoc.role,
+	accountStatus: userDoc.accountStatus || "active",
 	doctorProfile:
 		userDoc.role === "doctor"
 			? {
@@ -141,6 +142,10 @@ const login = async (req, res) => {
 		const user = await User.findOne({ email: email.toLowerCase().trim() }).select("+password");
 		if (!user) {
 			return res.status(401).json({ message: "invalid credentials" });
+		}
+
+		if (["suspended", "deactivated"].includes(user.accountStatus)) {
+			return res.status(403).json({ message: "account is currently unavailable" });
 		}
 
 		const isPasswordValid = await bcrypt.compare(password, user.password);
