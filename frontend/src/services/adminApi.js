@@ -59,3 +59,13 @@ export const updateUserStatus = async (userId, payload) => {
 	const response = await adminApi.patch(`/users/${userId}/status`, payload);
 	return response.data;
 };
+
+export const fetchPaymentOverview = async () => {
+	const response = await adminApi.get("/payments/overview");
+	return response.data;
+};
+
+export const fetchPaymentTransactions = async (params) => {
+	const response = await adminApi.get("/payments/transactions", { params });
+	return response.data;
+};

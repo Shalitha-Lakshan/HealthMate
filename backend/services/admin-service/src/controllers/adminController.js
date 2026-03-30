@@ -1,6 +1,7 @@
 const { Types } = require("mongoose");
 const bcrypt = require("bcryptjs");
 const { getAuthUserModel } = require("../models/AuthUser");
+const { getPaymentTransactionModel } = require("../models/PaymentTransaction");
 const AuditLog = require("../models/AuditLog");
 
 const isValidEmail = (email) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
@@ -35,6 +36,23 @@ const sanitizeUser = (userDoc) => ({
 			: undefined,
 	createdAt: userDoc.createdAt,
 	updatedAt: userDoc.updatedAt,
+});
+
+const sanitizePaymentTransaction = (transactionDoc) => ({
+	id: transactionDoc._id,
+	transactionId: transactionDoc.transactionId,
+	appointmentId: transactionDoc.appointmentId,
+	patientId: transactionDoc.patientId,
+	amount: transactionDoc.amount,
+	currency: transactionDoc.currency,
+	provider: transactionDoc.provider,
+	status: transactionDoc.status,
+	paymentMethod: transactionDoc.paymentMethod,
+	paymentReference: transactionDoc.paymentReference,
+	errorMessage: transactionDoc.errorMessage,
+	paidAt: transactionDoc.paidAt,
+	createdAt: transactionDoc.createdAt,
+	updatedAt: transactionDoc.updatedAt,
 });
 
 const pendingDoctorQuery = {
@@ -533,6 +551,134 @@ const getAuditLogs = async (req, res) => {
 	}
 };
 
+const getPaymentOverview = async (_req, res) => {
+	try {
+		const PaymentTransaction = await getPaymentTransactionModel();
+
+		const [
+			totalTransactions,
+			succeededTransactions,
+			pendingTransactions,
+			failedTransactions,
+			revenueAgg,
+			recentTransactions,
+		] = await Promise.all([
+			PaymentTransaction.countDocuments({}),
+			PaymentTransaction.countDocuments({ status: "succeeded" }),
+			PaymentTransaction.countDocuments({ status: "pending" }),
+			PaymentTransaction.countDocuments({ status: "failed" }),
+			PaymentTransaction.aggregate([
+				{ $match: { status: "succeeded" } },
+				{ $group: { _id: null, totalRevenue: { $sum: "$amount" } } },
+			]),
+			PaymentTransaction.find({})
+				.select("transactionId amount currency provider status paidAt createdAt")
+				.sort({ createdAt: -1 })
+				.limit(5),
+		]);
+
+		return res.status(200).json({
+			stats: {
+				totalTransactions,
+				succeededTransactions,
+				pendingTransactions,
+				failedTransactions,
+				totalRevenue: revenueAgg?.[0]?.totalRevenue || 0,
+			},
+			recentTransactions: recentTransactions.map((transaction) =>
+				sanitizePaymentTransaction(transaction)
+			),
+		});
+	} catch (error) {
+		return res.status(500).json({ message: "failed to fetch payment overview", error: error.message });
+	}
+};
+
+const getPaymentTransactions = async (req, res) => {
+	try {
+		const PaymentTransaction = await getPaymentTransactionModel();
+
+		const status = (req.query.status || "").trim();
+		const provider = (req.query.provider || "").trim();
+		const search = (req.query.search || "").trim();
+		const currency = (req.query.currency || "").trim().toUpperCase();
+		const minAmount = req.query.minAmount;
+		const maxAmount = req.query.maxAmount;
+		const page = Math.max(Number(req.query.page) || 1, 1);
+		const limit = Math.min(Math.max(Number(req.query.limit) || 20, 1), 100);
+		const skip = (page - 1) * limit;
+
+		const query = {};
+
+		if (status) {
+			query.status = status;
+		}
+
+		if (provider) {
+			query.provider = provider;
+		}
+
+		if (currency) {
+			query.currency = currency;
+		}
+
+		if (search) {
+			query.$or = [
+				{ transactionId: { $regex: search, $options: "i" } },
+				{ paymentReference: { $regex: search, $options: "i" } },
+				{ paymentMethod: { $regex: search, $options: "i" } },
+			];
+		}
+
+		if (minAmount !== undefined || maxAmount !== undefined) {
+			query.amount = {};
+
+			if (minAmount !== undefined && minAmount !== "") {
+				const parsedMinAmount = Number(minAmount);
+				if (Number.isNaN(parsedMinAmount)) {
+					return res.status(400).json({ message: "invalid minAmount" });
+				}
+				query.amount.$gte = parsedMinAmount;
+			}
+
+			if (maxAmount !== undefined && maxAmount !== "") {
+				const parsedMaxAmount = Number(maxAmount);
+				if (Number.isNaN(parsedMaxAmount)) {
+					return res.status(400).json({ message: "invalid maxAmount" });
+				}
+				query.amount.$lte = parsedMaxAmount;
+			}
+
+			if (Object.keys(query.amount).length === 0) {
+				delete query.amount;
+			}
+		}
+
+		const [transactions, total] = await Promise.all([
+			PaymentTransaction.find(query)
+				.select(
+					"transactionId appointmentId patientId amount currency provider status paymentMethod paymentReference errorMessage paidAt createdAt updatedAt"
+				)
+				.sort({ createdAt: -1 })
+				.skip(skip)
+				.limit(limit),
+			PaymentTransaction.countDocuments(query),
+		]);
+
+		return res.status(200).json({
+			transactions: transactions.map((transaction) => sanitizePaymentTransaction(transaction)),
+			pagination: {
+				page,
+				limit,
+				total,
+				totalPages: Math.max(Math.ceil(total / limit), 1),
+			},
+		});
+	} catch (error) {
+		return res.status(500).json({ message: "failed to fetch payment transactions", error: error.message });
+	}
+};
+
 module.exports = {
 	getOverview,
 	getUsers,
@@ -543,4 +689,6 @@ module.exports = {
 	updateUser,
 	deleteUser,
 	getAuditLogs,
+	getPaymentOverview,
+	getPaymentTransactions,
 };

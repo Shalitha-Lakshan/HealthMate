@@ -9,6 +9,8 @@ const {
 	updateUser,
 	deleteUser,
 	getAuditLogs,
+	getPaymentOverview,
+	getPaymentTransactions,
 } = require("../controllers/adminController");
 const { requireAuth, authorizeRoles } = require("../middlewares/authMiddleware");
 
@@ -23,5 +25,7 @@ router.get("/audit-logs", requireAuth, authorizeRoles("admin"), getAuditLogs);
 router.get("/verifications", requireAuth, authorizeRoles("admin"), getDoctorVerificationQueue);
 router.patch("/verifications/:doctorId", requireAuth, authorizeRoles("admin"), updateDoctorVerificationStatus);
 router.patch("/users/:userId/status", requireAuth, authorizeRoles("admin"), updateUserStatus);
+router.get("/payments/overview", requireAuth, authorizeRoles("admin"), getPaymentOverview);
+router.get("/payments/transactions", requireAuth, authorizeRoles("admin"), getPaymentTransactions);
 
 module.exports = router;

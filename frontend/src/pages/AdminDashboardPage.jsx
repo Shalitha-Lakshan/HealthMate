@@ -8,6 +8,8 @@ import {
 	fetchAdminUsers,
 	fetchAuditLogs,
 	fetchDoctorVerificationQueue,
+	fetchPaymentOverview,
+	fetchPaymentTransactions,
 	updateAdminUser,
 	updateDoctorVerificationStatus,
 	updateUserStatus,
@@ -56,6 +58,25 @@ const accountStatusClass = (status) => {
 	return "bg-slate-200 text-slate-700";
 };
 
+const paymentStatusClass = (status) => {
+	if (status === "succeeded") {
+		return "bg-emerald-100 text-emerald-700";
+	}
+
+	if (status === "failed") {
+		return "bg-rose-100 text-rose-700";
+	}
+
+	return "bg-amber-100 text-amber-700";
+};
+
+const formatAmount = (amount, currency = "LKR") =>
+	new Intl.NumberFormat("en-LK", {
+		style: "currency",
+		currency: currency || "LKR",
+		maximumFractionDigits: 2,
+	}).format(Number(amount || 0));
+
 function AdminDashboardPage() {
 	const user = getStoredUser() || {};
 	const initialUserForm = {
@@ -73,6 +94,14 @@ function AdminDashboardPage() {
 		role: "",
 		accountStatus: "",
 	};
+	const defaultPaymentFilters = {
+		search: "",
+		status: "",
+		provider: "",
+		currency: "",
+		minAmount: "",
+		maxAmount: "",
+	};
 
 	const [activeMenuItem, setActiveMenuItem] = useState("Overview");
 	const [stats, setStats] = useState(null);
@@ -81,11 +110,15 @@ function AdminDashboardPage() {
 	const [userPagination, setUserPagination] = useState({ page: 1, limit: 20, total: 0, totalPages: 1 });
 	const [auditLogs, setAuditLogs] = useState([]);
 	const [verificationQueue, setVerificationQueue] = useState([]);
+	const [paymentStats, setPaymentStats] = useState(null);
+	const [paymentTransactions, setPaymentTransactions] = useState([]);
+	const [paymentPagination, setPaymentPagination] = useState({ page: 1, limit: 20, total: 0, totalPages: 1 });
 	const [isLoading, setIsLoading] = useState(true);
 	const [actionLoadingId, setActionLoadingId] = useState("");
 	const [errorMessage, setErrorMessage] = useState("");
 	const [successMessage, setSuccessMessage] = useState("");
 	const [userFilters, setUserFilters] = useState(defaultUserFilters);
+	const [paymentFilters, setPaymentFilters] = useState(defaultPaymentFilters);
 	const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
 	const [isEditModalOpen, setIsEditModalOpen] = useState(false);
 	const [deleteTarget, setDeleteTarget] = useState(null);
@@ -102,10 +135,101 @@ function AdminDashboardPage() {
 		[stats]
 	);
 
+	const paymentStatsCards = useMemo(
+		() => [
+			{ label: "Total Transactions", value: paymentStats?.totalTransactions ?? 0, meta: "All recorded payment attempts" },
+			{ label: "Successful", value: paymentStats?.succeededTransactions ?? 0, meta: "Completed transactions" },
+			{ label: "Pending", value: paymentStats?.pendingTransactions ?? 0, meta: "Awaiting completion" },
+			{ label: "Revenue", value: formatAmount(paymentStats?.totalRevenue, "LKR"), meta: "Total collected revenue" },
+		],
+		[paymentStats]
+	);
+
+	const operationsStatsCards = useMemo(() => {
+		const approvals = auditLogs.filter((log) => /approve/i.test(log.action || "")).length;
+		const riskActions = auditLogs.filter((log) => /suspend|delete|reject/i.test(log.action || "")).length;
+
+		return [
+			{ label: "Audit Events", value: auditLogs.length, meta: "Recent tracked admin actions" },
+			{ label: "Approvals", value: approvals, meta: "Approval actions in recent logs" },
+			{ label: "Risk Actions", value: riskActions, meta: "Suspend, reject, or delete actions" },
+		];
+	}, [auditLogs]);
+
+	const moduleKpiCatalog = useMemo(
+		() => [
+			...adminStats.map((card) => ({ ...card, module: "admin", domain: "users" })),
+			...paymentStatsCards.map((card) => ({ ...card, module: "payment", domain: "payments" })),
+			...operationsStatsCards.map((card) => ({ ...card, module: "operations", domain: "operations" })),
+		],
+		[adminStats, paymentStatsCards, operationsStatsCards]
+	);
+
+	const visibleKpiCards = useMemo(() => {
+		const moduleKey =
+			activeMenuItem === "Payment Management"
+				? "payment"
+				: activeMenuItem === "Operations"
+					? "operations"
+					: "admin";
+
+		const cardsForModule = moduleKpiCatalog.filter((card) => card.module === moduleKey);
+
+		if (moduleKey === "payment" || moduleKey === "operations") {
+			return cardsForModule.filter((card) => card.domain !== "users");
+		}
+
+		return cardsForModule;
+	}, [activeMenuItem, moduleKpiCatalog]);
+
 	const hasActiveUserFilters = useMemo(
 		() => Boolean(userFilters.search.trim() || userFilters.role || userFilters.accountStatus),
 		[userFilters]
 	);
+
+	const hasActivePaymentFilters = useMemo(
+		() =>
+			Boolean(
+				paymentFilters.search.trim() ||
+				paymentFilters.status ||
+				paymentFilters.provider ||
+				paymentFilters.currency ||
+				paymentFilters.minAmount ||
+				paymentFilters.maxAmount
+			),
+		[paymentFilters]
+	);
+
+	const overviewCards = useMemo(() => {
+		const totalTransactions = paymentStats?.totalTransactions ?? 0;
+		const succeededTransactions = paymentStats?.succeededTransactions ?? 0;
+		const successRate = totalTransactions > 0 ? Math.round((succeededTransactions / totalTransactions) * 100) : 0;
+		const approvals = auditLogs.filter((log) => /approve/i.test(log.action || "")).length;
+		const riskActions = auditLogs.filter((log) => /suspend|delete|reject/i.test(log.action || "")).length;
+
+		return [
+			{
+				label: "Payment Revenue",
+				value: formatAmount(paymentStats?.totalRevenue, "LKR"),
+				description: "Cumulative processed revenue",
+			},
+			{
+				label: "Payment Success Rate",
+				value: `${successRate}%`,
+				description: `${succeededTransactions} of ${totalTransactions} transactions`,
+			},
+			{
+				label: "Audit Events",
+				value: auditLogs.length,
+				description: "Recent tracked admin actions",
+			},
+			{
+				label: "Risk Actions",
+				value: riskActions,
+				description: `${approvals} approvals vs flagged actions`,
+			},
+		];
+	}, [auditLogs, paymentStats]);
 
 	const loadAdminData = async () => {
 		setErrorMessage("");
@@ -166,14 +290,69 @@ function AdminDashboardPage() {
 		}
 	};
 
+	const loadPaymentOverview = async () => {
+		try {
+			const response = await fetchPaymentOverview();
+			setPaymentStats(response.stats || null);
+		} catch {
+			setPaymentStats(null);
+		}
+	};
+
+	const loadPaymentTransactions = async (page = 1, overrides = {}) => {
+		setErrorMessage("");
+		try {
+			const params = {
+				page,
+				limit: paymentPagination.limit,
+				search: (overrides.search ?? paymentFilters.search).trim(),
+				status: overrides.status ?? paymentFilters.status,
+				provider: overrides.provider ?? paymentFilters.provider,
+				currency: (overrides.currency ?? paymentFilters.currency).trim().toUpperCase(),
+				minAmount: (overrides.minAmount ?? paymentFilters.minAmount).toString().trim(),
+				maxAmount: (overrides.maxAmount ?? paymentFilters.maxAmount).toString().trim(),
+			};
+
+			const response = await fetchPaymentTransactions(params);
+			setPaymentTransactions(response.transactions || []);
+			setPaymentPagination(response.pagination || { page: 1, limit: 20, total: 0, totalPages: 1 });
+		} catch (error) {
+			setErrorMessage(error.response?.data?.message || "Failed to load payment transactions.");
+		}
+	};
+
+	const handleApplyPaymentFilters = async () => {
+		await loadPaymentTransactions(1, {
+			search: paymentFilters.search.trim(),
+			currency: paymentFilters.currency.trim().toUpperCase(),
+			minAmount: paymentFilters.minAmount,
+			maxAmount: paymentFilters.maxAmount,
+		});
+	};
+
+	const handleClearPaymentFilters = async () => {
+		setPaymentFilters(defaultPaymentFilters);
+		await loadPaymentTransactions(1, defaultPaymentFilters);
+	};
+
 	useEffect(() => {
 		loadAdminData();
 		loadAuditLogs();
+		loadPaymentOverview();
 	}, []);
 
 	useEffect(() => {
 		if (activeMenuItem === "User Management") {
 			loadUsers(1);
+		}
+
+		if (activeMenuItem === "Payment Management") {
+			loadPaymentOverview();
+			loadPaymentTransactions(1);
+		}
+
+		if (activeMenuItem === "Operations") {
+			loadPaymentOverview();
 		}
 	}, [activeMenuItem]);
 
@@ -188,6 +367,18 @@ function AdminDashboardPage() {
 
 		return () => clearTimeout(debounceTimer);
 	}, [activeMenuItem, userFilters.search]);
+
+	useEffect(() => {
+		if (activeMenuItem !== "Payment Management") {
+			return undefined;
+		}
+
+		const debounceTimer = setTimeout(() => {
+			loadPaymentTransactions(1, { search: paymentFilters.search.trim() });
+		}, 400);
+
+		return () => clearTimeout(debounceTimer);
+	}, [activeMenuItem, paymentFilters.search]);
 
 	const handleVerificationAction = async (doctorId, status) => {
 		setErrorMessage("");
@@ -334,55 +525,95 @@ function AdminDashboardPage() {
 	};
 
 	const renderOverview = () => (
-		<div className="mt-5 grid gap-5 lg:grid-cols-[1.35fr_1fr]">
+		<div className="mt-5 space-y-5">
 			<section className="rounded-2xl border border-slate-200 bg-white p-5">
-				<div className="mb-4 flex items-center justify-between">
-					<h2 className="text-sm font-semibold text-slate-900">Doctor Verification Queue</h2>
-					<span className="text-xs font-semibold text-slate-500">{verificationQueue.length} pending</span>
+				<div className="mb-4 flex flex-wrap items-center justify-between gap-2">
+					<div>
+						<h2 className="text-sm font-semibold text-slate-900">Executive Overview</h2>
+						<p className="text-xs text-slate-500">Live snapshot of account, verification, and payment health.</p>
+					</div>
+					<span className="rounded-lg border border-slate-200 bg-slate-50 px-2.5 py-1 text-[11px] font-semibold text-slate-600">
+						Updated now
+					</span>
 				</div>
-				<div className="space-y-3">
-					{verificationQueue.length === 0 ? (
-						<p className="rounded-xl border border-slate-200 bg-slate-50 p-4 text-sm text-slate-600">
-							No pending doctor verifications.
-						</p>
-					) : (
-						verificationQueue.slice(0, 5).map((item) => (
-							<div key={item.id} className="rounded-xl border border-slate-200 bg-slate-50 p-4">
-								<div className="flex items-center justify-between gap-3">
-									<div>
-										<p className="text-sm font-semibold text-slate-900">{item.name}</p>
-										<p className="text-xs text-slate-500">{item.doctorProfile?.specialization || "General"}</p>
+				<div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+					{overviewCards.map((item) => (
+						<div key={item.label} className="rounded-xl border border-slate-200 bg-slate-50 p-4">
+							<p className="text-xs uppercase tracking-wide text-slate-500">{item.label}</p>
+							<p className="mt-2 text-2xl font-bold text-slate-900">{item.value}</p>
+							<p className="mt-1 text-xs text-slate-500">{item.description}</p>
+						</div>
+					))}
+				</div>
+			</section>
+
+			<div className="grid gap-5 lg:grid-cols-[1.25fr_1fr]">
+				<section className="rounded-2xl border border-slate-200 bg-white p-5">
+					<div className="mb-4 flex items-center justify-between">
+						<h3 className="text-sm font-semibold text-slate-900">Verification Queue</h3>
+						<span className="text-xs font-semibold text-slate-500">{verificationQueue.length} pending</span>
+					</div>
+					<div className="space-y-3">
+						{verificationQueue.length === 0 ? (
+							<p className="rounded-xl border border-slate-200 bg-slate-50 p-4 text-sm text-slate-600">
+								No pending doctor verifications.
+							</p>
+						) : (
+							verificationQueue.slice(0, 4).map((item) => (
+								<div key={item.id} className="rounded-xl border border-slate-200 bg-slate-50 p-4">
+									<div className="flex flex-wrap items-center justify-between gap-2">
+										<div>
+											<p className="text-sm font-semibold text-slate-900">{item.name}</p>
+											<p className="text-xs text-slate-500">{item.doctorProfile?.specialization || "General"}</p>
+										</div>
+										<span className="rounded-lg bg-amber-100 px-2 py-1 text-[11px] font-semibold text-amber-700">Pending</span>
 									</div>
-									<span className="rounded-lg bg-amber-100 px-2 py-1 text-[11px] font-semibold text-amber-700">
-										Pending
-									</span>
+									<p className="mt-2 text-xs text-slate-500">Submitted: {formatDateTime(item.createdAt)}</p>
 								</div>
-								<p className="mt-2 text-xs text-slate-500">Submitted: {formatDateTime(item.createdAt)}</p>
-							</div>
-						))
-					)}
-				</div>
-			</section>
+							))
+						)}
+					</div>
+				</section>
 
-			<section className="space-y-5">
-				<div className="rounded-2xl border border-slate-200 bg-slate-50 p-5">
-					<h3 className="text-sm font-semibold text-slate-900">User Distribution</h3>
-					<ul className="mt-3 space-y-2 text-sm text-slate-700">
-						<li className="flex items-center justify-between"><span>Admins</span><span>{stats?.totalAdmins ?? 0}</span></li>
-						<li className="flex items-center justify-between"><span>Doctors</span><span>{stats?.totalDoctors ?? 0}</span></li>
-						<li className="flex items-center justify-between"><span>Patients</span><span>{stats?.totalPatients ?? 0}</span></li>
-					</ul>
-				</div>
+				<section className="space-y-5">
+					<div className="rounded-2xl border border-slate-200 bg-slate-50 p-5">
+						<h3 className="text-sm font-semibold text-slate-900">Recent Registrations</h3>
+						<div className="mt-3 space-y-2">
+							{recentUsers.length === 0 ? (
+								<p className="text-xs text-slate-500">No recent registrations.</p>
+							) : (
+								recentUsers.slice(0, 4).map((item) => (
+									<div key={item.id} className="flex items-center justify-between rounded-lg border border-slate-200 bg-white px-3 py-2">
+										<div>
+											<p className="text-xs font-semibold text-slate-900">{item.name}</p>
+											<p className="text-[11px] capitalize text-slate-500">{item.role}</p>
+										</div>
+										<p className="text-[11px] text-slate-500">{formatDateTime(item.createdAt)}</p>
+									</div>
+								))
+							)}
+						</div>
+					</div>
 
-				<div className="rounded-2xl border border-violet-200 bg-violet-50 p-5">
-					<h3 className="text-sm font-semibold text-violet-900">Admin Actions</h3>
-					<ul className="mt-3 space-y-2 text-sm text-violet-800">
-						<li>• Verify pending doctor applications</li>
-						<li>• Monitor newly registered users</li>
-						<li>• Review account role distribution</li>
-					</ul>
-				</div>
-			</section>
+					<div className="rounded-2xl border border-slate-200 bg-slate-50 p-5">
+						<h3 className="text-sm font-semibold text-slate-900">Latest Admin Actions</h3>
+						<div className="mt-3 space-y-2">
+							{auditLogs.length === 0 ? (
+								<p className="text-xs text-slate-500">No audit logs yet.</p>
+							) : (
+								auditLogs.slice(0, 4).map((log) => (
+									<div key={log._id} className="rounded-lg border border-slate-200 bg-white px-3 py-2">
+										<p className="text-xs font-semibold text-slate-800">{log.action}</p>
+										<p className="mt-1 text-[11px] text-slate-500">
+											By {log.actorName || "Admin"} • {formatDateTime(log.createdAt)}
+										</p>
+									</div>
+								))
+							)}
+						</div>
+					</div>
+				</section>
+			</div>
 		</div>
 	);
 
@@ -673,6 +904,153 @@ function AdminDashboardPage() {
 		</section>
 	);
 
+	const renderPaymentManagement = () => (
+		<section className="rounded-2xl border border-slate-200 bg-white p-5">
+			<div className="mb-4 flex items-center justify-between">
+				<h2 className="text-sm font-semibold text-slate-900">Payment Management</h2>
+				<span className="text-xs font-semibold text-slate-500">{paymentPagination.total} transactions</span>
+			</div>
+
+			<form
+				onSubmit={(event) => {
+					event.preventDefault();
+					handleApplyPaymentFilters();
+				}}
+				className="mb-4 rounded-2xl border border-slate-200 bg-slate-50 p-4"
+			>
+				<div className="mb-3 flex items-center justify-between">
+					<p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Filter Transactions</p>
+					{hasActivePaymentFilters && (
+						<button
+							type="button"
+							onClick={handleClearPaymentFilters}
+							className="rounded-lg border border-slate-300 px-2.5 py-1 text-xs font-semibold text-slate-700"
+						>
+							Clear All
+						</button>
+					)}
+				</div>
+
+				<div className="grid gap-3 lg:grid-cols-[1.5fr_1fr_1fr_1fr_1fr_1fr_auto]">
+					<input
+						type="text"
+						value={paymentFilters.search}
+						onChange={(event) => setPaymentFilters((prev) => ({ ...prev, search: event.target.value }))}
+						placeholder="Search by transaction ID/reference"
+						className="rounded-xl border border-slate-300 px-3 py-2 text-sm"
+					/>
+					<select
+						value={paymentFilters.status}
+						onChange={(event) => setPaymentFilters((prev) => ({ ...prev, status: event.target.value }))}
+						className="rounded-xl border border-slate-300 px-3 py-2 text-sm"
+					>
+						<option value="">All statuses</option>
+						<option value="pending">Pending</option>
+						<option value="succeeded">Succeeded</option>
+						<option value="failed">Failed</option>
+					</select>
+					<input
+						type="text"
+						value={paymentFilters.provider}
+						onChange={(event) => setPaymentFilters((prev) => ({ ...prev, provider: event.target.value }))}
+						placeholder="Provider"
+						className="rounded-xl border border-slate-300 px-3 py-2 text-sm"
+					/>
+					<input
+						type="text"
+						maxLength={3}
+						value={paymentFilters.currency}
+						onChange={(event) => setPaymentFilters((prev) => ({ ...prev, currency: event.target.value.toUpperCase() }))}
+						placeholder="Currency"
+						className="rounded-xl border border-slate-300 px-3 py-2 text-sm uppercase"
+					/>
+					<input
+						type="number"
+						min="0"
+						value={paymentFilters.minAmount}
+						onChange={(event) => setPaymentFilters((prev) => ({ ...prev, minAmount: event.target.value }))}
+						placeholder="Min"
+						className="rounded-xl border border-slate-300 px-3 py-2 text-sm"
+					/>
+					<input
+						type="number"
+						min="0"
+						value={paymentFilters.maxAmount}
+						onChange={(event) => setPaymentFilters((prev) => ({ ...prev, maxAmount: event.target.value }))}
+						placeholder="Max"
+						className="rounded-xl border border-slate-300 px-3 py-2 text-sm"
+					/>
+					<button type="submit" className="rounded-xl bg-blue-600 px-4 py-2 text-sm font-semibold text-white">
+						Apply
+					</button>
+				</div>
+			</form>
+
+			<div className="overflow-x-auto">
+				<table className="min-w-full text-left text-sm">
+					<thead>
+						<tr className="border-b border-slate-200 text-xs uppercase text-slate-500">
+							<th className="pb-2 pr-4">Transaction</th>
+							<th className="pb-2 pr-4">Amount</th>
+							<th className="pb-2 pr-4">Provider</th>
+							<th className="pb-2 pr-4">Status</th>
+							<th className="pb-2 pr-4">Reference</th>
+							<th className="pb-2">Created</th>
+						</tr>
+					</thead>
+					<tbody>
+						{paymentTransactions.length === 0 ? (
+							<tr>
+								<td colSpan={6} className="py-6 text-center text-sm text-slate-500">
+									No payment transactions found.
+								</td>
+							</tr>
+						) : (
+							paymentTransactions.map((item) => (
+								<tr key={item.id} className="border-b border-slate-100 text-slate-700">
+									<td className="py-3 pr-4 font-medium text-slate-900">{item.transactionId || "N/A"}</td>
+									<td className="py-3 pr-4">{formatAmount(item.amount, item.currency || "LKR")}</td>
+									<td className="py-3 pr-4">{item.provider || "N/A"}</td>
+									<td className="py-3 pr-4">
+										<span className={`rounded-lg px-2 py-1 text-[11px] font-semibold ${paymentStatusClass(item.status)}`}>
+											{item.status || "pending"}
+										</span>
+									</td>
+									<td className="py-3 pr-4 text-xs">{item.paymentReference || "-"}</td>
+									<td className="py-3">{formatDateTime(item.createdAt)}</td>
+								</tr>
+							))
+						)}
+					</tbody>
+				</table>
+			</div>
+
+			<div className="mt-4 flex items-center justify-between">
+				<p className="text-xs text-slate-500">
+					Page {paymentPagination.page} of {paymentPagination.totalPages}
+				</p>
+				<div className="flex gap-2">
+					<button
+						type="button"
+						onClick={() => loadPaymentTransactions(Math.max(paymentPagination.page - 1, 1))}
+						disabled={paymentPagination.page <= 1}
+						className="rounded-lg border border-slate-300 px-3 py-1.5 text-xs font-semibold text-slate-700 disabled:opacity-50"
+					>
+						Previous
+					</button>
+					<button
+						type="button"
+						onClick={() => loadPaymentTransactions(Math.min(paymentPagination.page + 1, paymentPagination.totalPages))}
+						disabled={paymentPagination.page >= paymentPagination.totalPages}
+						className="rounded-lg border border-slate-300 px-3 py-1.5 text-xs font-semibold text-slate-700 disabled:opacity-50"
+					>
+						Next
+					</button>
+				</div>
+			</div>
+		</section>
+	);
+
 	const renderUserModalFields = (form, setForm, includePassword) => (
 		<div className="grid gap-3 md:grid-cols-2">
 			<input
@@ -772,15 +1150,17 @@ function AdminDashboardPage() {
 				</div>
 			)}
 
-			<div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-				{adminStats.map((item) => (
-					<div key={item.label} className="rounded-2xl border border-slate-200 bg-slate-50 p-5">
-						<p className="text-xs uppercase tracking-wide text-slate-500">{item.label}</p>
-						<p className="mt-2 text-2xl font-bold text-slate-900">{item.value}</p>
-						<p className="mt-1 text-xs text-slate-500">{item.meta}</p>
-					</div>
-				))}
-			</div>
+			{activeMenuItem !== "Overview" && (
+				<div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+					{visibleKpiCards.map((item) => (
+						<div key={item.label} className="rounded-2xl border border-slate-200 bg-slate-50 p-5">
+							<p className="text-xs uppercase tracking-wide text-slate-500">{item.label}</p>
+							<p className="mt-2 text-2xl font-bold text-slate-900">{item.value}</p>
+							<p className="mt-1 text-xs text-slate-500">{item.meta}</p>
+						</div>
+					))}
+				</div>
+			)}
 
 			{isLoading ? (
 				<div className="mt-5 rounded-2xl border border-slate-200 bg-slate-50 p-5 text-sm text-slate-600">Loading admin data...</div>
@@ -789,6 +1169,7 @@ function AdminDashboardPage() {
 					{activeMenuItem === "Overview" && renderOverview()}
 					{activeMenuItem === "User Management" && renderUserManagement()}
 					{activeMenuItem === "Doctor Verification" && renderVerification()}
+					{activeMenuItem === "Payment Management" && renderPaymentManagement()}
 					{activeMenuItem === "Operations" && renderOperations()}
 				</>
 			)}
