@@ -1,0 +1,667 @@
+import { useEffect, useState } from "react";
+import DashboardShell from "../components/DashboardShell";
+import PatientTelemedicinePage from "./PatientTelemedicinePage";
+import SymptomChatbot from "../components/SymptomChatbot";
+import { DOCTOR_SPECIALIZATIONS } from "../constants/doctorSpecializations";
+import { getStoredUser } from "../utils/auth";
+import {
+	createAppointmentHold,
+	fetchAvailableSlots,
+	fetchMyAppointments,
+} from "../services/appointmentApi";
+import { completePayment, initiatePayment } from "../services/paymentApi";
+import { fetchDoctors } from "../services/authApi";
+
+const INITIAL_FORM_STATE = {
+	patientName: "",
+	patientAge: "",
+	doctorId: "",
+	doctorName: "",
+	doctorEmail: "",
+	doctorPhone: "",
+	specialty: "",
+	appointmentDate: "",
+	slotTime: "",
+	mode: "in-person",
+	reason: "",
+};
+
+const formatAppointmentDate = (value) => {
+	if (!value) {
+		return "Not scheduled";
+	}
+
+	const parsed = new Date(value);
+	if (Number.isNaN(parsed.getTime())) {
+		return value;
+	}
+
+	return new Intl.DateTimeFormat("en-US", {
+		year: "numeric",
+		month: "short",
+		day: "numeric",
+		hour: "numeric",
+		minute: "2-digit",
+	}).format(parsed);
+};
+
+function PatientDashboardPage() {
+	const user = getStoredUser() || {};
+	const [activeMenuItem, setActiveMenuItem] = useState(() => {
+		const paymentStatus = new URLSearchParams(window.location.search).get("payment");
+		return paymentStatus ? "Appointments" : "Overview";
+	});
+	const [formData, setFormData] = useState({ ...INITIAL_FORM_STATE, patientName: user.name || "" });
+	const [appointments, setAppointments] = useState([]);
+	const [doctors, setDoctors] = useState([]);
+	const [isLoadingDoctors, setIsLoadingDoctors] = useState(false);
+	const [isLoadingAppointments, setIsLoadingAppointments] = useState(false);
+	const [isLoadingSlots, setIsLoadingSlots] = useState(false);
+	const [isSubmitting, setIsSubmitting] = useState(false);
+	const [isPaying, setIsPaying] = useState(false);
+	const [availableSlots, setAvailableSlots] = useState([]);
+	const [reservedAppointment, setReservedAppointment] = useState(null);
+	const [errorMessage, setErrorMessage] = useState("");
+	const [successMessage, setSuccessMessage] = useState("");
+
+	const appointmentStats = [
+		{ label: "Upcoming", value: "03", meta: "Next in 2h" },
+		{ label: "Completed", value: "18", meta: "This quarter" },
+		{ label: "Prescriptions", value: "12", meta: "Digital copies" },
+		{ label: "Reports", value: "08", meta: "Uploaded files" },
+	];
+
+	const upcomingAppointments = [
+		{ doctor: "Dr. Fernando", specialty: "Cardiology", time: "Today • 6:30 PM", status: "Confirmed" },
+		{ doctor: "Dr. Wijesinghe", specialty: "General Physician", time: "Tue • 9:00 AM", status: "Pending" },
+		{ doctor: "Dr. Perera", specialty: "Dermatology", time: "Fri • 3:15 PM", status: "Confirmed" },
+	];
+
+	const loadAppointments = async () => {
+		setErrorMessage("");
+		setIsLoadingAppointments(true);
+
+		try {
+			const response = await fetchMyAppointments();
+			setAppointments(response.appointments || []);
+		} catch (error) {
+			setErrorMessage(error.response?.data?.message || "Failed to load appointments.");
+		} finally {
+			setIsLoadingAppointments(false);
+		}
+	};
+
+	const loadDoctors = async (specialty) => {
+		setIsLoadingDoctors(true);
+		try {
+			const response = await fetchDoctors(specialty);
+			setDoctors(response.doctors || []);
+		} catch {
+			setDoctors([]);
+		} finally {
+			setIsLoadingDoctors(false);
+		}
+	};
+
+	const specialties = DOCTOR_SPECIALIZATIONS;
+
+	const doctorsForSelectedSpecialty = doctors.filter((doctor) => doctor.specialty === formData.specialty);
+
+	const loadSlots = async (doctorId, date) => {
+		if (!doctorId || !date) {
+			setAvailableSlots([]);
+			return;
+		}
+
+		setIsLoadingSlots(true);
+		try {
+			const response = await fetchAvailableSlots({ doctorId, date });
+			setAvailableSlots(response.slots || []);
+		} catch {
+			setAvailableSlots([]);
+		} finally {
+			setIsLoadingSlots(false);
+		}
+	};
+
+	const handleAppointmentChange = (event) => {
+		const { name, value } = event.target;
+
+		if (name === "specialty") {
+			setFormData((prev) => ({
+				...prev,
+				specialty: value,
+				doctorId: "",
+				doctorName: "",
+				doctorEmail: "",
+				doctorPhone: "",
+				appointmentDate: "",
+				slotTime: "",
+			}));
+			setAvailableSlots([]);
+			setReservedAppointment(null);
+			return;
+		}
+
+		if (name === "doctorId") {
+			const selectedDoctor = doctorsForSelectedSpecialty.find((doctor) => doctor.id === value);
+			setFormData((prev) => ({
+				...prev,
+				doctorId: value,
+				doctorName: selectedDoctor?.name || "",
+				doctorEmail: selectedDoctor?.email || "",
+				doctorPhone: selectedDoctor?.phoneNumber || "",
+				appointmentDate: "",
+				slotTime: "",
+			}));
+			setAvailableSlots([]);
+			setReservedAppointment(null);
+			return;
+		}
+
+		if (name === "appointmentDate") {
+			setFormData((prev) => ({ ...prev, appointmentDate: value, slotTime: "" }));
+			setReservedAppointment(null);
+			loadSlots(formData.doctorId, value);
+			return;
+		}
+
+		if (name === "slotTime") {
+			setReservedAppointment(null);
+		}
+
+		setFormData((prev) => ({ ...prev, [name]: value }));
+	};
+
+	const handleCreateAppointment = async (event) => {
+		event.preventDefault();
+		setErrorMessage("");
+		setSuccessMessage("");
+		setIsSubmitting(true);
+
+		try {
+			const payload = {
+				patientName: formData.patientName,
+				patientAge: Number(formData.patientAge),
+				patientPhone: user.phoneNumber,
+				doctorId: formData.doctorId,
+				doctorName: formData.doctorName,
+				doctorEmail: formData.doctorEmail,
+				doctorPhone: formData.doctorPhone,
+				specialty: formData.specialty,
+				appointmentDate: formData.appointmentDate,
+				slotTime: formData.slotTime,
+				mode: formData.mode,
+				reason: formData.reason,
+			};
+
+			const response = await createAppointmentHold(payload);
+			setReservedAppointment(response.appointment);
+			setSuccessMessage("Slot reserved. Complete payment to confirm appointment.");
+			await loadAppointments();
+		} catch (error) {
+			setErrorMessage(error.response?.data?.message || "Failed to create appointment.");
+		} finally {
+			setIsSubmitting(false);
+		}
+	};
+
+	const handleConfirmPayment = async () => {
+		if (!reservedAppointment?._id) {
+			setErrorMessage("No reserved appointment found for payment.");
+			return;
+		}
+
+		setErrorMessage("");
+		setSuccessMessage("");
+		setIsPaying(true);
+
+		try {
+			const initiated = await initiatePayment({
+				appointmentId: reservedAppointment._id,
+				amount: reservedAppointment.consultationFee,
+				currency: reservedAppointment.currency,
+				provider: "stripe",
+				successUrl: `${window.location.origin}/dashboard/patient?payment=success`,
+				cancelUrl: `${window.location.origin}/dashboard/patient?payment=cancel`,
+			});
+
+			if (!initiated.checkoutUrl) {
+				setErrorMessage("Unable to create Stripe checkout session.");
+				return;
+			}
+
+			window.location.href = initiated.checkoutUrl;
+		} catch (error) {
+			setErrorMessage(error.response?.data?.message || "Payment failed.");
+		} finally {
+			setIsPaying(false);
+		}
+	};
+
+	useEffect(() => {
+		if (activeMenuItem !== "Appointments") {
+			return;
+		}
+
+		loadDoctors();
+		loadAppointments();
+	}, [activeMenuItem]);
+
+	useEffect(() => {
+		const handleStripeReturn = async () => {
+			const params = new URLSearchParams(window.location.search);
+			const paymentStatus = params.get("payment");
+			const transactionId = params.get("tx");
+			const sessionId = params.get("session_id");
+
+			if (!paymentStatus) {
+				return;
+			}
+
+			setActiveMenuItem("Appointments");
+			setErrorMessage("");
+			setSuccessMessage("");
+
+			if (paymentStatus === "cancel") {
+				setErrorMessage("Payment cancelled. Your slot is still pending until expiry.");
+				window.history.replaceState({}, "", "/dashboard/patient");
+				await loadAppointments();
+				return;
+			}
+
+			if (paymentStatus === "success" && transactionId && sessionId) {
+				setIsPaying(true);
+				try {
+					await completePayment(transactionId, {
+						paymentMethod: "stripe-card",
+						gatewaySessionId: sessionId,
+					});
+
+					setSuccessMessage("Payment successful. Appointment confirmed.");
+					setReservedAppointment(null);
+					setFormData({ ...INITIAL_FORM_STATE, patientName: user.name || "" });
+					setAvailableSlots([]);
+					await loadDoctors();
+					await loadAppointments();
+				} catch (error) {
+					setErrorMessage(error.response?.data?.message || "Payment verification failed.");
+				} finally {
+					setIsPaying(false);
+					window.history.replaceState({}, "", "/dashboard/patient");
+				}
+			}
+		};
+
+		handleStripeReturn();
+	}, [user.name]);
+
+	const renderOverview = () => (
+		<>
+			<div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+				{appointmentStats.map((item) => (
+					<div key={item.label} className="rounded-2xl border border-slate-200 bg-slate-50 p-5">
+						<p className="text-xs uppercase tracking-wide text-slate-500">{item.label}</p>
+						<p className="mt-2 text-2xl font-bold text-slate-900">{item.value}</p>
+						<p className="mt-1 text-xs text-slate-500">{item.meta}</p>
+					</div>
+				))}
+			</div>
+
+			<div className="mt-5 grid gap-5 lg:grid-cols-[1.35fr_1fr]">
+				<section className="rounded-2xl border border-slate-200 bg-white p-5">
+					<div className="mb-4 flex items-center justify-between">
+						<h2 className="text-sm font-semibold text-slate-900">Upcoming Appointments</h2>
+						<button className="text-xs font-semibold text-blue-700">View all</button>
+					</div>
+					<div className="space-y-3">
+						{upcomingAppointments.map((appointment) => (
+							<div
+								key={`${appointment.doctor}-${appointment.time}`}
+								className="rounded-xl border border-slate-200 bg-slate-50 p-4"
+							>
+								<div className="flex items-center justify-between gap-3">
+									<div>
+										<p className="text-sm font-semibold text-slate-900">{appointment.doctor}</p>
+										<p className="text-xs text-slate-500">{appointment.specialty}</p>
+									</div>
+									<span
+										className={`rounded-lg px-2 py-1 text-[11px] font-semibold ${
+											appointment.status === "Confirmed"
+												? "bg-emerald-100 text-emerald-700"
+												: "bg-amber-100 text-amber-700"
+										}`}
+									>
+										{appointment.status}
+									</span>
+								</div>
+								<p className="mt-3 text-xs font-medium text-slate-600">{appointment.time}</p>
+							</div>
+						))}
+					</div>
+				</section>
+
+				<section className="space-y-5">
+					<div className="rounded-2xl border border-slate-200 bg-slate-50 p-5">
+						<h3 className="text-sm font-semibold text-slate-900">Profile Snapshot</h3>
+						<div className="mt-4 space-y-2 text-sm">
+							<p className="text-slate-700">
+								<span className="text-slate-500">Email:</span> {user.email || "N/A"}
+							</p>
+							<p className="text-slate-700">
+								<span className="text-slate-500">Phone:</span> {user.phoneNumber || "N/A"}
+							</p>
+							<p className="text-slate-700">
+								<span className="text-slate-500">Role:</span> {user.role || "patient"}
+							</p>
+						</div>
+					</div>
+
+					<div className="rounded-2xl border border-slate-200 bg-blue-50 p-5">
+						<h3 className="text-sm font-semibold text-blue-900">Quick Actions</h3>
+						<ul className="mt-3 space-y-2 text-sm text-blue-800">
+							<li>• Book a new appointment</li>
+							<li>• Upload a new medical report</li>
+							<li>• Join upcoming telemedicine session</li>
+						</ul>
+					</div>
+				</section>
+			</div>
+		</>
+	);
+
+	const renderAppointments = () => (
+		<div className="grid gap-5 lg:grid-cols-[1.1fr_1fr]">
+			<section className="rounded-2xl border border-slate-200 bg-white p-5">
+				<h2 className="text-sm font-semibold text-slate-900">Book Appointment</h2>
+				<p className="mt-1 text-xs text-slate-500">Select a doctor slot, pay, and confirm your appointment.</p>
+
+				<form className="mt-4 space-y-3" onSubmit={handleCreateAppointment}>
+					<div className="grid gap-3 sm:grid-cols-2">
+						<div>
+							<label htmlFor="patientName" className="mb-1 block text-xs font-semibold text-slate-600">
+								Patient Name
+							</label>
+							<input
+								id="patientName"
+								name="patientName"
+								required
+								value={formData.patientName}
+								onChange={handleAppointmentChange}
+								placeholder="Your full name"
+								className="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+							/>
+						</div>
+
+						<div>
+							<label htmlFor="patientAge" className="mb-1 block text-xs font-semibold text-slate-600">
+								Patient Age
+							</label>
+							<input
+								id="patientAge"
+								name="patientAge"
+								type="number"
+								min="0"
+								max="120"
+								required
+								value={formData.patientAge}
+								onChange={handleAppointmentChange}
+								placeholder="Age"
+								className="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+							/>
+						</div>
+					</div>
+
+					<div>
+						<label htmlFor="specialty" className="mb-1 block text-xs font-semibold text-slate-600">
+							Specialty
+						</label>
+						<select
+							id="specialty"
+							name="specialty"
+							required
+							value={formData.specialty}
+							onChange={handleAppointmentChange}
+							disabled={isLoadingDoctors || specialties.length === 0}
+							className="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+						>
+							<option value="">
+								{isLoadingDoctors ? "Loading specialties..." : "Select specialty"}
+							</option>
+							{specialties.map((specialty) => (
+								<option key={specialty} value={specialty}>
+									{specialty}
+								</option>
+							))}
+						</select>
+					</div>
+
+					<div>
+						<label htmlFor="doctorId" className="mb-1 block text-xs font-semibold text-slate-600">
+							Doctor Name
+						</label>
+						<select
+							id="doctorId"
+							name="doctorId"
+							required
+							value={formData.doctorId}
+							onChange={handleAppointmentChange}
+							disabled={!formData.specialty}
+							className="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+						>
+							<option value="">{formData.specialty ? "Select doctor" : "Select specialty first"}</option>
+							{doctorsForSelectedSpecialty.map((doctor) => (
+								<option key={doctor.id} value={doctor.id}>
+									{doctor.name} ({doctor.yearsOfExperience ?? "-"}y)
+								</option>
+							))}
+						</select>
+					</div>
+
+					<div className="grid gap-3 sm:grid-cols-2">
+						<div>
+							<label htmlFor="appointmentDate" className="mb-1 block text-xs font-semibold text-slate-600">
+								Appointment Date
+							</label>
+							<input
+								id="appointmentDate"
+								name="appointmentDate"
+								type="date"
+								required
+								value={formData.appointmentDate}
+								onChange={handleAppointmentChange}
+								disabled={!formData.doctorId}
+								className="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+							/>
+						</div>
+
+						<div>
+							<label htmlFor="slotTime" className="mb-1 block text-xs font-semibold text-slate-600">
+								Doctor Slot
+							</label>
+							<select
+								id="slotTime"
+								name="slotTime"
+								required
+								value={formData.slotTime}
+								onChange={handleAppointmentChange}
+								disabled={!formData.appointmentDate || isLoadingSlots}
+								className="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+							>
+								<option value="">
+									{isLoadingSlots ? "Loading slots..." : formData.appointmentDate ? "Select available slot" : "Select date first"}
+								</option>
+								{availableSlots
+									.filter((slot) => slot.available)
+									.map((slot) => (
+										<option key={slot.time} value={slot.time}>
+											{slot.time}
+										</option>
+									))}
+							</select>
+						</div>
+					</div>
+
+					<div>
+						<label htmlFor="mode" className="mb-1 block text-xs font-semibold text-slate-600">
+							Mode
+						</label>
+						<select
+							id="mode"
+							name="mode"
+							value={formData.mode}
+							onChange={handleAppointmentChange}
+							className="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+						>
+							<option value="in-person">In-person</option>
+							<option value="online">Online</option>
+						</select>
+					</div>
+
+					<div>
+						<label htmlFor="reason" className="mb-1 block text-xs font-semibold text-slate-600">
+							Reason
+						</label>
+						<textarea
+							id="reason"
+							name="reason"
+							required
+							rows={4}
+							value={formData.reason}
+							onChange={handleAppointmentChange}
+							placeholder="Briefly describe your symptoms or consultation reason"
+							className="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+						/>
+					</div>
+
+					{errorMessage && (
+						<p className="rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{errorMessage}</p>
+					)}
+
+					{successMessage && (
+						<p className="rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-700">
+							{successMessage}
+						</p>
+					)}
+
+					<button
+						type="submit"
+						disabled={isSubmitting}
+						className="w-full rounded-xl bg-blue-600 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:bg-blue-300"
+					>
+						{isSubmitting ? "Reserving slot..." : "Reserve Slot"}
+					</button>
+
+					{reservedAppointment && (
+						<div className="rounded-xl border border-emerald-200 bg-emerald-50 p-4">
+							<p className="text-xs font-semibold uppercase tracking-wide text-emerald-700">Payment Required</p>
+							<p className="mt-2 text-sm text-emerald-900">
+								Reserved slot: {reservedAppointment.appointmentDate} • {reservedAppointment.slotTime}
+							</p>
+							<p className="mt-1 text-sm text-emerald-900">
+								Fee: {reservedAppointment.currency} {reservedAppointment.consultationFee}
+							</p>
+							<p className="mt-1 text-xs text-emerald-700">
+								Pay before: {formatAppointmentDate(reservedAppointment.paymentExpiresAt)}
+							</p>
+							<button
+								type="button"
+								onClick={handleConfirmPayment}
+								disabled={isPaying}
+								className="mt-3 w-full rounded-lg bg-emerald-600 px-3 py-2 text-sm font-semibold text-white transition hover:bg-emerald-700 disabled:cursor-not-allowed disabled:bg-emerald-300"
+							>
+								{isPaying ? "Processing payment..." : "Pay & Confirm Appointment"}
+							</button>
+						</div>
+					)}
+				</form>
+			</section>
+
+			<section className="rounded-2xl border border-slate-200 bg-slate-50 p-5">
+				<div className="mb-4 flex items-center justify-between">
+					<h2 className="text-sm font-semibold text-slate-900">My Appointments</h2>
+					<button
+						type="button"
+						onClick={loadAppointments}
+						disabled={isLoadingAppointments}
+						className="text-xs font-semibold text-blue-700 disabled:text-blue-300"
+					>
+						{isLoadingAppointments ? "Loading..." : "Refresh"}
+					</button>
+				</div>
+
+				{appointments.length === 0 ? (
+					<p className="rounded-xl border border-dashed border-slate-300 bg-white px-3 py-4 text-sm text-slate-500">
+						No appointments yet. Create your first request.
+					</p>
+				) : (
+					<div className="space-y-3">
+						{appointments.map((appointment) => (
+							<div key={appointment._id} className="rounded-xl border border-slate-200 bg-white p-4">
+								<p className="mb-2 text-[11px] font-semibold uppercase tracking-wide text-blue-700">
+									ID: {appointment.appointmentId}
+								</p>
+								<div className="flex items-center justify-between gap-2">
+									<div>
+										<p className="text-sm font-semibold text-slate-900">{appointment.doctorName}</p>
+										<p className="text-xs text-slate-500">{appointment.specialty}</p>
+									</div>
+									<span
+										className={`rounded-lg px-2 py-1 text-[11px] font-semibold uppercase ${
+											appointment.status === "confirmed"
+												? "bg-emerald-100 text-emerald-700"
+												: appointment.status === "pending_payment"
+													? "bg-amber-100 text-amber-700"
+													: appointment.status === "expired" || appointment.status === "payment_failed"
+														? "bg-rose-100 text-rose-700"
+														: "bg-slate-200 text-slate-700"
+										}`}
+									>
+										{appointment.status}
+									</span>
+								</div>
+								<p className="mt-3 text-xs font-medium text-slate-600">
+									{formatAppointmentDate(appointment.appointmentDateTime)}
+								</p>
+								<p className="mt-2 text-xs text-slate-600">
+									Patient: {appointment.patientName} ({appointment.patientAge})
+								</p>
+								<p className="mt-2 text-xs text-slate-600">Mode: {appointment.mode}</p>
+								{appointment.consultationFee !== undefined && (
+									<p className="mt-2 text-xs text-slate-600">
+										Payment: {appointment.paymentStatus} • {appointment.currency} {appointment.consultationFee}
+									</p>
+								)}
+								<p className="mt-2 text-xs text-slate-600">Reason: {appointment.reason}</p>
+							</div>
+						))}
+					</div>
+				)}
+			</section>
+		</div>
+	);
+
+	return (
+		<DashboardShell
+			role="patient"
+			initialActiveMenuItem={activeMenuItem}
+			onMenuChange={(menuItem) => {
+				setActiveMenuItem(menuItem);
+			}}
+			title={`Welcome, ${user.name || "Patient"}`}
+			subtitle="Manage appointments, reports, and telemedicine sessions."
+		>
+			{activeMenuItem === "Telemedicine" ? (
+				<PatientTelemedicinePage />
+			) : activeMenuItem === "Appointments" ? (
+				renderAppointments()
+			) : activeMenuItem === "AI Assistant" ? (
+				<SymptomChatbot />
+			) : (
+				renderOverview()
+			)}
+		</DashboardShell>
+	);
+}
+
+export default PatientDashboardPage;

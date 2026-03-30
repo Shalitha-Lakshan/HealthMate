@@ -1,0 +1,255 @@
+const bcrypt = require("bcryptjs");
+const User = require("../models/User");
+const { generateAccessToken } = require("../services/tokenService");
+
+const INTERNAL_SERVICE_TOKEN = process.env.INTERNAL_SERVICE_TOKEN || "healthmate-internal-token";
+
+const isValidEmail = (email) => {
+	const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+	return emailRegex.test(email);
+};
+
+const isValidPhoneNumber = (phoneNumber) => {
+	const normalized = phoneNumber.replace(/\s+/g, "");
+	const phoneRegex = /^(?:\+94|0)7\d{8}$/;
+	return phoneRegex.test(normalized);
+};
+
+const isValidSLMCRegistration = (registrationNumber) => {
+	const normalized = registrationNumber.trim();
+	const slmcRegex = /^[A-Za-z0-9\-/]{4,20}$/;
+	return slmcRegex.test(normalized);
+};
+
+const sanitizeUser = (userDoc) => ({
+	id: userDoc._id,
+	name: userDoc.name,
+	email: userDoc.email,
+	phoneNumber: userDoc.phoneNumber,
+	role: userDoc.role,
+	accountStatus: userDoc.accountStatus || "active",
+	doctorProfile:
+		userDoc.role === "doctor"
+			? {
+				specialization: userDoc.doctorProfile?.specialization || "",
+				slmcRegistrationNumber: userDoc.doctorProfile?.slmcRegistrationNumber || "",
+				yearsOfExperience: userDoc.doctorProfile?.yearsOfExperience ?? null,
+				verificationStatus: userDoc.doctorProfile?.verificationStatus || "pending",
+			}
+			: undefined,
+	createdAt: userDoc.createdAt,
+	updatedAt: userDoc.updatedAt,
+});
+
+const register = async (req, res) => {
+	try {
+		const { name, email, phoneNumber, password, role, doctorProfile } = req.body;
+		const allowedRegisterRoles = ["patient", "doctor"];
+
+		if (!name || !email || !phoneNumber || !password) {
+			return res.status(400).json({ message: "name, email, phoneNumber, and password are required" });
+		}
+
+		if (!isValidEmail(email)) {
+			return res.status(400).json({ message: "invalid email format" });
+		}
+
+		if (password.length < 6) {
+			return res.status(400).json({ message: "password must be at least 6 characters" });
+		}
+
+		if (!isValidPhoneNumber(phoneNumber)) {
+			return res.status(400).json({ message: "invalid phone number format" });
+		}
+
+		if (role && !allowedRegisterRoles.includes(role)) {
+			return res.status(400).json({ message: "invalid role. allowed: patient, doctor" });
+		}
+
+		if ((role || "patient") === "doctor") {
+			if (!doctorProfile?.specialization || !doctorProfile?.slmcRegistrationNumber) {
+				return res.status(400).json({
+					message: "doctor specialization and SLMC registration number are required",
+				});
+			}
+
+			if (!isValidSLMCRegistration(doctorProfile.slmcRegistrationNumber)) {
+				return res.status(400).json({ message: "invalid SLMC registration number format" });
+			}
+
+			if (
+				doctorProfile.yearsOfExperience === undefined ||
+				doctorProfile.yearsOfExperience === null ||
+				Number.isNaN(Number(doctorProfile.yearsOfExperience))
+			) {
+				return res.status(400).json({ message: "doctor yearsOfExperience is required" });
+			}
+
+			if (Number(doctorProfile.yearsOfExperience) < 0 || Number(doctorProfile.yearsOfExperience) > 60) {
+				return res.status(400).json({ message: "yearsOfExperience must be between 0 and 60" });
+			}
+		}
+
+		const existingUser = await User.findOne({ email: email.toLowerCase().trim() });
+		if (existingUser) {
+			return res.status(409).json({ message: "email already in use" });
+		}
+
+		const existingPhone = await User.findOne({ phoneNumber: phoneNumber.trim() });
+		if (existingPhone) {
+			return res.status(409).json({ message: "phone number already in use" });
+		}
+
+		const hashedPassword = await bcrypt.hash(password, 10);
+		const targetRole = role || "patient";
+		const user = await User.create({
+			name: name.trim(),
+			email: email.toLowerCase().trim(),
+			phoneNumber: phoneNumber.trim(),
+			password: hashedPassword,
+			role: targetRole,
+			accountStatus: targetRole === "doctor" ? "pending" : "active",
+			doctorProfile:
+				targetRole === "doctor"
+					? {
+						specialization: doctorProfile.specialization.trim(),
+						slmcRegistrationNumber: doctorProfile.slmcRegistrationNumber.trim(),
+						yearsOfExperience: Number(doctorProfile.yearsOfExperience),
+						verificationStatus: "pending",
+					}
+					: undefined,
+		});
+
+		const token = generateAccessToken({
+			sub: user._id.toString(),
+			name: user.name,
+			role: user.role,
+			email: user.email,
+		});
+
+		return res.status(201).json({
+			message: "user registered successfully",
+			user: sanitizeUser(user),
+			token,
+		});
+	} catch (error) {
+		return res.status(500).json({ message: "failed to register user", error: error.message });
+	}
+};
+
+const login = async (req, res) => {
+	try {
+		const { email, password } = req.body;
+
+		if (!email || !password) {
+			return res.status(400).json({ message: "email and password are required" });
+		}
+
+		const user = await User.findOne({ email: email.toLowerCase().trim() }).select("+password");
+		if (!user) {
+			return res.status(401).json({ message: "invalid credentials" });
+		}
+
+		const effectiveAccountStatus = user.accountStatus || "active";
+
+		if (effectiveAccountStatus !== "active") {
+			if (effectiveAccountStatus === "pending") {
+				return res.status(403).json({ message: "account pending approval" });
+			}
+
+			return res.status(403).json({ message: "account is currently unavailable" });
+		}
+
+		if (user.role === "doctor" && user.doctorProfile?.verificationStatus !== "approved") {
+			return res.status(403).json({ message: "doctor account is pending verification" });
+		}
+
+		const isPasswordValid = await bcrypt.compare(password, user.password);
+		if (!isPasswordValid) {
+			return res.status(401).json({ message: "invalid credentials" });
+		}
+
+		const token = generateAccessToken({
+			sub: user._id.toString(),
+			name: user.name,
+			role: user.role,
+			email: user.email,
+		});
+
+		return res.status(200).json({
+			message: "login successful",
+			user: sanitizeUser(user),
+			token,
+		});
+	} catch (error) {
+		return res.status(500).json({ message: "failed to login", error: error.message });
+	}
+};
+
+const getDoctors = async (req, res) => {
+	try {
+		const specialtyFilter = (req.query.specialty || "").trim();
+		const query = {
+			role: "doctor",
+			accountStatus: "active",
+			"doctorProfile.verificationStatus": "approved",
+			"doctorProfile.specialization": { $exists: true, $ne: "" },
+		};
+
+		if (specialtyFilter) {
+			query["doctorProfile.specialization"] = specialtyFilter;
+		}
+
+		const doctors = await User.find(query)
+			.select("name email phoneNumber doctorProfile.specialization doctorProfile.yearsOfExperience")
+			.sort({ name: 1 });
+
+		const payload = doctors.map((doctor) => ({
+			id: doctor._id,
+			name: doctor.name,
+			email: doctor.email,
+			phoneNumber: doctor.phoneNumber,
+			specialty: doctor.doctorProfile?.specialization || "General",
+			yearsOfExperience: doctor.doctorProfile?.yearsOfExperience ?? null,
+		}));
+
+		return res.status(200).json({ doctors: payload });
+	} catch (error) {
+		return res.status(500).json({ message: "failed to fetch doctors", error: error.message });
+	}
+};
+
+const getDoctorBookingEligibility = async (req, res) => {
+	try {
+		const internalToken = req.headers["x-internal-token"];
+		if (!internalToken || internalToken !== INTERNAL_SERVICE_TOKEN) {
+			return res.status(401).json({ message: "invalid internal service token" });
+		}
+
+		const { doctorId } = req.params;
+		const doctor = await User.findById(doctorId).select("role accountStatus doctorProfile.verificationStatus");
+
+		if (!doctor || doctor.role !== "doctor") {
+			return res.status(404).json({ message: "doctor not found" });
+		}
+
+		const effectiveAccountStatus = doctor.accountStatus || "active";
+		const isEligible = effectiveAccountStatus === "active" && doctor.doctorProfile?.verificationStatus === "approved";
+
+		return res.status(200).json({
+			doctorId,
+			isEligible,
+			accountStatus: effectiveAccountStatus,
+			verificationStatus: doctor.doctorProfile?.verificationStatus || "pending",
+		});
+	} catch (error) {
+		return res.status(500).json({ message: "failed to validate doctor eligibility", error: error.message });
+	}
+};
+
+module.exports = {
+	register,
+	login,
+	getDoctors,
+	getDoctorBookingEligibility,
+};
