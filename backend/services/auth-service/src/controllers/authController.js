@@ -2,6 +2,8 @@ const bcrypt = require("bcryptjs");
 const User = require("../models/User");
 const { generateAccessToken } = require("../services/tokenService");
 
+const INTERNAL_SERVICE_TOKEN = process.env.INTERNAL_SERVICE_TOKEN || "healthmate-internal-token";
+
 const isValidEmail = (email) => {
 	const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 	return emailRegex.test(email);
@@ -32,6 +34,7 @@ const sanitizeUser = (userDoc) => ({
 				specialization: userDoc.doctorProfile?.specialization || "",
 				slmcRegistrationNumber: userDoc.doctorProfile?.slmcRegistrationNumber || "",
 				yearsOfExperience: userDoc.doctorProfile?.yearsOfExperience ?? null,
+				verificationStatus: userDoc.doctorProfile?.verificationStatus || "pending",
 			}
 			: undefined,
 	createdAt: userDoc.createdAt,
@@ -98,18 +101,21 @@ const register = async (req, res) => {
 		}
 
 		const hashedPassword = await bcrypt.hash(password, 10);
+		const targetRole = role || "patient";
 		const user = await User.create({
 			name: name.trim(),
 			email: email.toLowerCase().trim(),
 			phoneNumber: phoneNumber.trim(),
 			password: hashedPassword,
-			role: role || "patient",
+			role: targetRole,
+			accountStatus: targetRole === "doctor" ? "pending" : "active",
 			doctorProfile:
-				(role || "patient") === "doctor"
+				targetRole === "doctor"
 					? {
 						specialization: doctorProfile.specialization.trim(),
 						slmcRegistrationNumber: doctorProfile.slmcRegistrationNumber.trim(),
 						yearsOfExperience: Number(doctorProfile.yearsOfExperience),
+						verificationStatus: "pending",
 					}
 					: undefined,
 		});
@@ -144,8 +150,18 @@ const login = async (req, res) => {
 			return res.status(401).json({ message: "invalid credentials" });
 		}
 
-		if (["suspended", "deactivated"].includes(user.accountStatus)) {
+		const effectiveAccountStatus = user.accountStatus || "active";
+
+		if (effectiveAccountStatus !== "active") {
+			if (effectiveAccountStatus === "pending") {
+				return res.status(403).json({ message: "account pending approval" });
+			}
+
 			return res.status(403).json({ message: "account is currently unavailable" });
+		}
+
+		if (user.role === "doctor" && user.doctorProfile?.verificationStatus !== "approved") {
+			return res.status(403).json({ message: "doctor account is pending verification" });
 		}
 
 		const isPasswordValid = await bcrypt.compare(password, user.password);
@@ -175,6 +191,8 @@ const getDoctors = async (req, res) => {
 		const specialtyFilter = (req.query.specialty || "").trim();
 		const query = {
 			role: "doctor",
+			accountStatus: "active",
+			"doctorProfile.verificationStatus": "approved",
 			"doctorProfile.specialization": { $exists: true, $ne: "" },
 		};
 
@@ -201,8 +219,37 @@ const getDoctors = async (req, res) => {
 	}
 };
 
+const getDoctorBookingEligibility = async (req, res) => {
+	try {
+		const internalToken = req.headers["x-internal-token"];
+		if (!internalToken || internalToken !== INTERNAL_SERVICE_TOKEN) {
+			return res.status(401).json({ message: "invalid internal service token" });
+		}
+
+		const { doctorId } = req.params;
+		const doctor = await User.findById(doctorId).select("role accountStatus doctorProfile.verificationStatus");
+
+		if (!doctor || doctor.role !== "doctor") {
+			return res.status(404).json({ message: "doctor not found" });
+		}
+
+		const effectiveAccountStatus = doctor.accountStatus || "active";
+		const isEligible = effectiveAccountStatus === "active" && doctor.doctorProfile?.verificationStatus === "approved";
+
+		return res.status(200).json({
+			doctorId,
+			isEligible,
+			accountStatus: effectiveAccountStatus,
+			verificationStatus: doctor.doctorProfile?.verificationStatus || "pending",
+		});
+	} catch (error) {
+		return res.status(500).json({ message: "failed to validate doctor eligibility", error: error.message });
+	}
+};
+
 module.exports = {
 	register,
 	login,
 	getDoctors,
+	getDoctorBookingEligibility,
 };

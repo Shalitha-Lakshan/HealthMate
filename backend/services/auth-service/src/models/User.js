@@ -32,7 +32,7 @@ const userSchema = new mongoose.Schema(
 		},
 		accountStatus: {
 			type: String,
-			enum: ["active", "suspended", "deactivated"],
+			enum: ["active", "pending", "suspended", "deactivated"],
 			default: "active",
 		},
 		doctorProfile: {
@@ -48,6 +48,20 @@ const userSchema = new mongoose.Schema(
 				type: Number,
 				min: 0,
 				max: 60,
+			},
+			verificationStatus: {
+				type: String,
+				enum: ["pending", "approved", "rejected"],
+			},
+			verificationNotes: {
+				type: String,
+				trim: true,
+			},
+			verificationReviewedAt: {
+				type: Date,
+			},
+			verificationReviewedBy: {
+				type: mongoose.Schema.Types.ObjectId,
 			},
 		},
 	},

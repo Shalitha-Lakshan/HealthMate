@@ -77,6 +77,8 @@ const formatAmount = (amount, currency = "LKR") =>
 		maximumFractionDigits: 2,
 	}).format(Number(amount || 0));
 
+const resolveUserId = (record) => String(record?.id || record?._id || "");
+
 function AdminDashboardPage() {
 	const user = getStoredUser() || {};
 	const initialUserForm = {
@@ -452,8 +454,14 @@ function AdminDashboardPage() {
 	};
 
 	const openEditModal = (selectedUser) => {
+		const selectedUserId = resolveUserId(selectedUser);
+		if (!selectedUserId) {
+			setErrorMessage("User identifier is missing. Refresh and try again.");
+			return;
+		}
+
 		setEditUserForm({
-			id: selectedUser.id,
+			id: selectedUserId,
 			name: selectedUser.name || "",
 			email: selectedUser.email || "",
 			phoneNumber: selectedUser.phoneNumber || "",
@@ -717,8 +725,11 @@ function AdminDashboardPage() {
 						</tr>
 					</thead>
 					<tbody>
-						{users.map((item) => (
-							<tr key={item.id} className="border-b border-slate-100 align-top text-slate-700">
+						{users.map((item) => {
+							const userId = resolveUserId(item);
+
+							return (
+							<tr key={userId || `${item.email}-${item.createdAt}`} className="border-b border-slate-100 align-top text-slate-700">
 								<td className="py-3 pr-4 font-medium text-slate-900">{item.name}</td>
 								<td className="py-3 pr-4 capitalize">{item.role}</td>
 								<td className="py-3 pr-4">{item.email}</td>
@@ -748,31 +759,31 @@ function AdminDashboardPage() {
 											<button
 												type="button"
 												onClick={() => openEditModal(item)}
-												disabled={actionLoadingId === item.id}
+												disabled={!userId || actionLoadingId === userId}
 												className="rounded-lg border border-blue-300 px-2 py-1 text-[11px] font-semibold text-blue-700 disabled:opacity-60"
 											>
 												Edit
 											</button>
 											<button
 												type="button"
-												onClick={() => setDeleteTarget({ id: item.id, name: item.name })}
-												disabled={actionLoadingId === item.id}
+												onClick={() => setDeleteTarget({ id: userId, name: item.name })}
+												disabled={!userId || actionLoadingId === userId}
 												className="rounded-lg border border-rose-300 px-2 py-1 text-[11px] font-semibold text-rose-700 disabled:opacity-60"
 											>
 												Delete
 											</button>
 											<button
 												type="button"
-												onClick={() => handleUserStatusAction(item.id, "active")}
-												disabled={actionLoadingId === item.id}
+												onClick={() => handleUserStatusAction(userId, "active")}
+												disabled={!userId || actionLoadingId === userId}
 												className="rounded-lg border border-emerald-300 px-2 py-1 text-[11px] font-semibold text-emerald-700 disabled:opacity-60"
 											>
 												Activate
 											</button>
 											<button
 												type="button"
-												onClick={() => handleUserStatusAction(item.id, "suspended")}
-												disabled={actionLoadingId === item.id}
+												onClick={() => handleUserStatusAction(userId, "suspended")}
+												disabled={!userId || actionLoadingId === userId}
 												className="rounded-lg border border-amber-300 px-2 py-1 text-[11px] font-semibold text-amber-700 disabled:opacity-60"
 											>
 												Suspend
@@ -782,7 +793,8 @@ function AdminDashboardPage() {
 								</td>
 								<td className="py-3">{formatDateTime(item.createdAt)}</td>
 							</tr>
-						))}
+							);
+						})}
 					</tbody>
 				</table>
 			</div>

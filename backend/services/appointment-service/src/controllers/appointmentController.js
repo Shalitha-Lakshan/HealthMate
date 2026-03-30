@@ -6,6 +6,8 @@ const SLOT_END_HOUR = 17;
 const PAYMENT_HOLD_MINUTES = Number(process.env.APPOINTMENT_PAYMENT_HOLD_MINUTES || 10);
 const DEFAULT_CONSULTATION_FEE = Number(process.env.DEFAULT_CONSULTATION_FEE || 3500);
 const APPOINTMENT_INTERNAL_TOKEN = process.env.APPOINTMENT_INTERNAL_TOKEN || "healthmate-internal-token";
+const AUTH_SERVICE_URL = process.env.AUTH_SERVICE_URL || "http://localhost:5001/api/auth";
+const AUTH_INTERNAL_TOKEN = process.env.AUTH_INTERNAL_TOKEN || "healthmate-internal-token";
 const NOTIFICATION_SERVICE_URL = process.env.NOTIFICATION_SERVICE_URL || "http://localhost:5006/api/notifications";
 const NOTIFICATION_INTERNAL_TOKEN = process.env.NOTIFICATION_INTERNAL_TOKEN || "healthmate-internal-token";
 
@@ -49,6 +51,50 @@ const releaseExpiredPendingPayments = async () => {
 			},
 		}
 	);
+};
+
+const ensureDoctorIsBookable = async (doctorId) => {
+	try {
+		const response = await fetch(`${AUTH_SERVICE_URL}/internal/doctors/${doctorId}/eligibility`, {
+			method: "GET",
+			headers: {
+				"x-internal-token": AUTH_INTERNAL_TOKEN,
+			},
+		});
+
+		if (response.status === 404) {
+			return {
+				ok: false,
+				statusCode: 404,
+				message: "selected doctor not found",
+			};
+		}
+
+		if (!response.ok) {
+			return {
+				ok: false,
+				statusCode: 502,
+				message: "unable to validate doctor eligibility right now",
+			};
+		}
+
+		const payload = await response.json();
+		if (!payload?.isEligible) {
+			return {
+				ok: false,
+				statusCode: 400,
+				message: "appointments can only be booked with approved doctors",
+			};
+		}
+
+		return { ok: true };
+	} catch (_error) {
+		return {
+			ok: false,
+			statusCode: 502,
+			message: "unable to validate doctor eligibility right now",
+		};
+	}
 };
 
 const sendAppointmentNotification = async ({ eventType, appointment }) => {
@@ -184,6 +230,11 @@ const createAppointmentHold = async (req, res) => {
 		const parsedAge = Number(patientAge);
 		if (Number.isNaN(parsedAge) || parsedAge < 0 || parsedAge > 120) {
 			return res.status(400).json({ message: "patientAge must be a valid number between 0 and 120" });
+		}
+
+		const doctorEligibility = await ensureDoctorIsBookable(doctorId);
+		if (!doctorEligibility.ok) {
+			return res.status(doctorEligibility.statusCode).json({ message: doctorEligibility.message });
 		}
 
 		const normalizedDate = normalizeDateOnly(appointmentDate);

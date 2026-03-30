@@ -31,6 +31,7 @@ const run = async () => {
 						phoneNumber: phone,
 						password: hash,
 						role: "admin",
+						accountStatus: "active",
 					},
 					$unset: {
 						doctorProfile: "",

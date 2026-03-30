@@ -215,6 +215,8 @@ const updateDoctorVerificationStatus = async (req, res) => {
 			verificationReviewedAt: new Date(),
 			verificationReviewedBy: req.user?.sub && Types.ObjectId.isValid(req.user.sub) ? req.user.sub : undefined,
 		};
+		doctor.accountStatus = status === "approved" ? "active" : "deactivated";
+		doctor.markModified("accountStatus");
 
 		await doctor.save();
 
@@ -237,8 +239,8 @@ const updateUserStatus = async (req, res) => {
 			return res.status(400).json({ message: "invalid user id" });
 		}
 
-		if (!["active", "suspended", "deactivated"].includes(status)) {
-			return res.status(400).json({ message: "invalid status. allowed: active, suspended, deactivated" });
+		if (!["active", "pending", "suspended", "deactivated"].includes(status)) {
+			return res.status(400).json({ message: "invalid status. allowed: active, pending, suspended, deactivated" });
 		}
 
 		const target = await User.findById(userId);
@@ -255,6 +257,7 @@ const updateUserStatus = async (req, res) => {
 		};
 
 		target.accountStatus = status;
+		target.markModified("accountStatus");
 		await target.save();
 
 		await AuditLog.create({
@@ -345,7 +348,7 @@ const createUser = async (req, res) => {
 			phoneNumber: normalizedPhone,
 			password: hashedPassword,
 			role: targetRole,
-			accountStatus: "active",
+			accountStatus: targetRole === "doctor" ? "pending" : "active",
 			doctorProfile:
 				targetRole === "doctor"
 					? {
