@@ -1,27 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
-import { useNavigate, useLocation } from "react-router-dom";
+import { useNavigate } from "react-router-dom";
 import { clearAuthStorage, getStoredUser } from "../utils/auth";
-
-const menuRoutes = {
-	patient: {
-		"Overview": "/dashboard/patient",
-		"Appointments": "/dashboard/patient/appointments",
-		"Medical Reports": "/dashboard/patient/reports",  // placeholder
-		"Telemedicine": "/dashboard/patient/telemedicine" // placeholder
-	},
-	doctor: {
-		"Overview": "/dashboard/doctor",
-		"Schedule": "/dashboard/doctor/schedule",
-		"Consultations": "/dashboard/doctor/consultations",
-		"Prescriptions": "/dashboard/doctor/prescriptions"
-	},
-	admin: {
-		"Overview": "/dashboard/admin",
-		"User Management": "/dashboard/admin/users",
-		"Doctor Verification": "/dashboard/admin/doctors",
-		"Operations": "/dashboard/admin/operations"
-	}
-};
 
 const menuByRole = {
 	patient: ["Overview", "Appointments", "Medical Reports", "Telemedicine"],
@@ -31,7 +10,6 @@ const menuByRole = {
 
 function DashboardShell({ role = "patient", title, subtitle, children }) {
 	const navigate = useNavigate();
-	const location = useLocation();
 	const user = getStoredUser() || {};
 	const [isSidebarOpen, setIsSidebarOpen] = useState(false);
 	const [activeMenuItem, setActiveMenuItem] = useState("Overview");
@@ -39,23 +17,8 @@ function DashboardShell({ role = "patient", title, subtitle, children }) {
 	const menuItems = useMemo(() => menuByRole[role] || menuByRole.patient, [role]);
 
 	useEffect(() => {
-		const routesForRole = menuRoutes[role] || menuRoutes.patient;
-		const currentPath = location.pathname;
-		
-		let active = "Overview";
-		for (const [name, path] of Object.entries(routesForRole)) {
-			// If current path matches or starts with the menu path (handling sub-routes like /dashboard/patient/book)
-			if (currentPath === path) {
-				active = name;
-				break;
-			} else if (name === "Appointments" && currentPath.includes("/book")) {
-				// Special case: keeping Appointments active when booking
-				active = "Appointments";
-				break;
-			}
-		}
-		setActiveMenuItem(active);
-	}, [location.pathname, role]);
+		setActiveMenuItem(menuItems[0]);
+	}, [menuItems]);
 
 	const handleLogout = () => {
 		clearAuthStorage();
@@ -97,11 +60,8 @@ function DashboardShell({ role = "patient", title, subtitle, children }) {
 								onClick={() => {
 									setActiveMenuItem(item);
 									setIsSidebarOpen(false);
-									if (menuRoutes[role] && menuRoutes[role][item]) {
-										navigate(menuRoutes[role][item]);
-									}
 								}}
-								className={`flex w-full items-center justify-between rounded-xl px-3 py-2.5 text-sm font-medium transition ${
+								className={`flex items-center justify-between rounded-xl px-3 py-2.5 text-sm font-medium transition ${
 									activeMenuItem === item
 										? "bg-blue-50 text-blue-700"
 										: "text-slate-600 hover:bg-slate-50"
