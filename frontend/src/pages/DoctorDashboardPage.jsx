@@ -1,6 +1,8 @@
 import { useState } from "react";
 import DashboardShell from "../components/DashboardShell";
 import DoctorTelemedicinePage from "./DoctorTelemedicinePage";
+import DoctorSchedulePage from "./DoctorSchedulePage";
+import DoctorConsultationsPage from "./DoctorConsultationsPage";
 import { getStoredUser } from "../utils/auth";
 
 function DoctorDashboardPage() {
@@ -31,6 +33,10 @@ function DoctorDashboardPage() {
 		>
 			{activeMenuItem === "Telemedicine" ? (
 				<DoctorTelemedicinePage />
+			) : activeMenuItem === "Schedule" ? (
+				<DoctorSchedulePage />
+			) : activeMenuItem === "Consultations" ? (
+				<DoctorConsultationsPage />
 			) : (
 				<>
 					<div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">

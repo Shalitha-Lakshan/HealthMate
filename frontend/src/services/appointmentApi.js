@@ -20,6 +20,11 @@ export const fetchMyAppointments = async () => {
 	return response.data;
 };
 
+export const fetchDoctorAppointments = async (doctorId) => {
+	const response = await appointmentApi.get(`/doctor/${doctorId}`);
+	return response.data;
+};
+
 export const fetchAvailableSlots = async ({ doctorId, date }) => {
 	const response = await appointmentApi.get("/slots", {
 		params: { doctorId, date },

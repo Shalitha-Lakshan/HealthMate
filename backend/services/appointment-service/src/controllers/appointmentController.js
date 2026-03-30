@@ -262,7 +262,8 @@ const getMyAppointments = async (req, res) => {
 const getDoctorAppointments = async (req, res) => {
 	try {
 		await releaseExpiredPendingPayments();
-		const appointments = await Appointment.find({ doctorId: req.user.sub }).sort({ appointmentDateTime: 1 });
+		const { doctorId } = req.params;
+		const appointments = await Appointment.find({ doctorId }).sort({ appointmentDateTime: 1 });
 		return res.status(200).json({ appointments });
 	} catch (error) {
 		return res.status(500).json({ message: "failed to fetch doctor appointments", error: error.message });

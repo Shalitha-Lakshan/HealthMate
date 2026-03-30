@@ -17,7 +17,7 @@ router.post("/internal/payment-confirmation", confirmAppointmentPaymentInternal)
 router.use(requireAuth);
 
 router.get("/my", authorizeRoles("patient"), getMyAppointments);
-router.get("/doctor", authorizeRoles("doctor"), getDoctorAppointments);
+router.get("/doctor/:doctorId", authorizeRoles("doctor"), getDoctorAppointments);
 router.get("/slots", authorizeRoles("patient"), getAvailableSlots);
 router.post("/hold", authorizeRoles("patient"), createAppointmentHold);
 router.post("/", authorizeRoles("patient"), createAppointmentHold);
