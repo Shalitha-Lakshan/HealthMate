@@ -1,4 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
+import jsPDF from "jspdf";
+import "jspdf/dist/jspdf.umd.min.js";
 import DashboardShell from "../components/DashboardShell";
 import { getStoredUser } from "../utils/auth";
 import {
@@ -78,6 +80,231 @@ const formatAmount = (amount, currency = "LKR") =>
 	}).format(Number(amount || 0));
 
 const resolveUserId = (record) => String(record?.id || record?._id || "");
+
+const buildPdfFileName = (prefix) => {
+	const timestamp = new Date().toISOString().slice(0, 19).replace(/[T:]/g, "-");
+	return `${prefix}-${timestamp}.pdf`;
+};
+
+const createPdfReport = (title, subtitle, filters, rows, columns, stats = null) => {
+	const doc = new jsPDF({
+		orientation: "landscape",
+		unit: "mm",
+		format: "a4",
+	});
+
+	const pageHeight = doc.internal.pageSize.getHeight();
+	const pageWidth = doc.internal.pageSize.getWidth();
+	let yPosition = 10;
+
+	// Professional header background
+	doc.setFillColor(24, 46, 112); // Deep professional blue
+	doc.rect(0, 0, pageWidth, 28, "F");
+
+	// Company name and logo area
+	doc.setFontSize(16);
+	doc.setTextColor(255, 255, 255);
+	doc.setFont(undefined, "bold");
+	doc.text("HealthMate", 15, 12);
+
+	doc.setFontSize(9);
+	doc.setTextColor(220, 220, 220);
+	doc.setFont(undefined, "normal");
+	doc.text("Administrative Report", 15, 18);
+
+	// Report date on right
+	doc.setFontSize(9);
+	doc.setTextColor(220, 220, 220);
+	doc.text(`Generated: ${new Date().toLocaleString()}`, pageWidth - 15, 12, { align: "right" });
+
+	yPosition = 32;
+
+	// Title and subtitle
+	doc.setFontSize(14);
+	doc.setTextColor(24, 46, 112);
+	doc.setFont(undefined, "bold");
+	doc.text(title, 15, yPosition);
+	yPosition += 6;
+
+	doc.setFontSize(10);
+	doc.setTextColor(80, 80, 80);
+	doc.setFont(undefined, "normal");
+	doc.text(subtitle, 15, yPosition);
+	yPosition += 6;
+
+	// Summary box with key metrics
+	if (stats) {
+		doc.setFillColor(242, 243, 245);
+		doc.rect(15, yPosition, pageWidth - 30, 12, "F");
+
+		doc.setFontSize(9);
+		doc.setTextColor(24, 46, 112);
+		doc.setFont(undefined, "bold");
+		doc.text("Summary", 18, yPosition + 4);
+
+		doc.setFontSize(8);
+		doc.setTextColor(80, 80, 80);
+		doc.setFont(undefined, "normal");
+
+		const statText = Object.entries(stats)
+			.map(([key, value]) => `${key}: ${value}`)
+			.join(" | ");
+
+		doc.text(statText, 18, yPosition + 9, { maxWidth: pageWidth - 36 });
+		yPosition += 14;
+	}
+
+	// Filters info box
+	if (filters && Object.keys(filters).length > 0) {
+		const activeFilters = Object.entries(filters)
+			.filter(([, value]) => value && String(value).trim())
+			.map(([key, value]) => `${key}: ${value}`)
+			.join(" • ");
+
+		if (activeFilters) {
+			doc.setFillColor(255, 250, 235);
+			doc.setDrawColor(220, 180, 100);
+			doc.setLineWidth(0.5);
+			doc.rect(15, yPosition, pageWidth - 30, 8, "FD");
+
+			doc.setFontSize(8);
+			doc.setTextColor(100, 80, 40);
+			doc.setFont(undefined, "italic");
+			doc.text(`Filters Applied: ${activeFilters}`, 18, yPosition + 5, { maxWidth: pageWidth - 36 });
+			yPosition += 10;
+		}
+	}
+
+	yPosition += 2;
+
+	// Table
+	const columnWidths = Array(columns.length).fill((pageWidth - 30) / columns.length);
+	const rowHeight = 7;
+
+	// Table header with gradient effect
+	doc.setFillColor(24, 46, 112);
+	doc.setTextColor(255, 255, 255);
+	doc.setFontSize(8);
+	doc.setFont(undefined, "bold");
+
+	let xPosition = 15;
+	columns.forEach((col, idx) => {
+		doc.rect(xPosition, yPosition, columnWidths[idx], rowHeight, "F");
+		doc.setDrawColor(200, 200, 200);
+		doc.setLineWidth(0.3);
+		doc.rect(xPosition, yPosition, columnWidths[idx], rowHeight);
+
+		// Center text in header
+		const textWidth = doc.getStringUnitWidth(col) * doc.internal.getFontSize() / doc.internal.scaleFactor;
+		const textOffset = (columnWidths[idx] - textWidth) / 2;
+		doc.text(col, xPosition + textOffset, yPosition + rowHeight - 1.5);
+		xPosition += columnWidths[idx];
+	});
+
+	yPosition += rowHeight;
+
+	// Table rows
+	doc.setTextColor(40, 40, 40);
+	doc.setFont(undefined, "normal");
+	doc.setFontSize(8);
+	doc.setDrawColor(220, 220, 220);
+	doc.setLineWidth(0.2);
+
+	rows.forEach((row, rowIdx) => {
+		// Check if new page is needed
+		if (yPosition + rowHeight > pageHeight - 12) {
+			doc.addPage();
+			yPosition = 10;
+
+			// Repeat header on new page
+			doc.setFillColor(24, 46, 112);
+			doc.setTextColor(255, 255, 255);
+			doc.setFont(undefined, "bold");
+			doc.setFontSize(8);
+			xPosition = 15;
+
+			columns.forEach((col, idx) => {
+				doc.rect(xPosition, yPosition, columnWidths[idx], rowHeight, "F");
+				doc.setDrawColor(200, 200, 200);
+				doc.setLineWidth(0.3);
+				doc.rect(xPosition, yPosition, columnWidths[idx], rowHeight);
+
+				const textWidth = doc.getStringUnitWidth(col) * doc.internal.getFontSize() / doc.internal.scaleFactor;
+				const textOffset = (columnWidths[idx] - textWidth) / 2;
+				doc.text(col, xPosition + textOffset, yPosition + rowHeight - 1.5);
+				xPosition += columnWidths[idx];
+			});
+
+			yPosition += rowHeight;
+			doc.setTextColor(40, 40, 40);
+			doc.setFont(undefined, "normal");
+		}
+
+		// Row background (alternating light gray)
+		if (rowIdx % 2 === 0) {
+			doc.setFillColor(248, 248, 248);
+			xPosition = 15;
+			columns.forEach((_, idx) => {
+				doc.rect(xPosition, yPosition, columnWidths[idx], rowHeight, "F");
+				xPosition += columnWidths[idx];
+			});
+		}
+
+		// Row borders
+		xPosition = 15;
+		columns.forEach((_, idx) => {
+			doc.setDrawColor(220, 220, 220);
+			doc.setLineWidth(0.2);
+			doc.rect(xPosition, yPosition, columnWidths[idx], rowHeight);
+			xPosition += columnWidths[idx];
+		});
+
+		// Row content
+		xPosition = 15;
+		row.forEach((cell, idx) => {
+			const cellText = String(cell || "").substring(0, 35); // Truncate long text
+			doc.text(cellText, xPosition + 2, yPosition + rowHeight - 1.5);
+			xPosition += columnWidths[idx];
+		});
+
+		yPosition += rowHeight;
+	});
+
+	yPosition += 3;
+
+	// Footer
+	const pageCount = doc.getNumberOfPages();
+	for (let i = 1; i <= pageCount; i++) {
+		doc.setPage(i);
+
+		// Footer line
+		doc.setDrawColor(200, 200, 200);
+		doc.setLineWidth(0.5);
+		doc.line(15, pageHeight - 10, pageWidth - 15, pageHeight - 10);
+
+		// Page number
+		doc.setFontSize(8);
+		doc.setTextColor(150, 150, 150);
+		doc.text(
+			`Page ${i} of ${pageCount}`,
+			pageWidth / 2,
+			pageHeight - 6,
+			{ align: "center" }
+		);
+
+		// Footer company info
+		doc.setFontSize(7);
+		doc.setTextColor(170, 170, 170);
+		doc.text("HealthMate - Medical Management System", 15, pageHeight - 6);
+		doc.text(`Confidential • Report ID: ${Math.random().toString(36).substring(7).toUpperCase()}`, pageWidth - 15, pageHeight - 6, { align: "right" });
+	}
+
+	return doc;
+};
+
+const triggerPdfDownload = (filename, doc) => {
+	doc.save(filename);
+};
 
 function AdminDashboardPage() {
 	const user = getStoredUser() || {};
@@ -532,6 +759,193 @@ function AdminDashboardPage() {
 		}
 	};
 
+	const collectPaginatedRecords = async (fetcher, dataKey, baseParams = {}) => {
+		const exportedRecords = [];
+		let page = 1;
+		let totalPages = 1;
+
+		do {
+			const response = await fetcher({
+				...baseParams,
+				page,
+				limit: 200,
+			});
+
+			exportedRecords.push(...(response?.[dataKey] || []));
+			totalPages = response?.pagination?.totalPages || 1;
+			page += 1;
+		} while (page <= totalPages);
+
+		return exportedRecords;
+	};
+
+	const handleExportUsersPdf = async () => {
+		setErrorMessage("");
+		setSuccessMessage("");
+		setActionLoadingId("export-users");
+
+		try {
+			const filters = {
+				search: userFilters.search.trim(),
+				role: userFilters.role,
+				accountStatus: userFilters.accountStatus,
+			};
+
+			const exportUsers = await collectPaginatedRecords(fetchAdminUsers, "users", filters);
+			if (exportUsers.length === 0) {
+				setErrorMessage("No users found to export for the selected filters.");
+				return;
+			}
+
+			const columns = [
+				"User ID",
+				"Name",
+				"Email",
+				"Phone",
+				"Role",
+				"Status",
+				"Verification",
+				"Joined",
+			];
+
+			const rows = exportUsers.map((item) => [
+				resolveUserId(item).substring(0, 12),
+				item.name || "",
+				item.email || "",
+				item.phoneNumber || "",
+				item.role || "",
+				item.accountStatus || "active",
+				item.role === "doctor" ? item.doctorProfile?.verificationStatus || "pending" : "N/A",
+				formatDateTime(item.createdAt),
+			]);
+
+			// Calculate summary statistics
+			const activeCount = exportUsers.filter((u) => u.accountStatus === "active").length;
+			const suspendedCount = exportUsers.filter((u) => u.accountStatus === "suspended").length;
+			const doctorCount = exportUsers.filter((u) => u.role === "doctor").length;
+			const patientCount = exportUsers.filter((u) => u.role === "patient").length;
+
+			const stats = {
+				"Total Users": exportUsers.length,
+				"Active": activeCount,
+				"Suspended": suspendedCount,
+				"Doctors": doctorCount,
+				"Patients": patientCount,
+			};
+
+			const filterText = [
+				userFilters.search.trim() && `Search: "${userFilters.search.trim()}"`,
+				userFilters.role && `Role: ${userFilters.role}`,
+				userFilters.accountStatus && `Status: ${userFilters.accountStatus}`,
+			]
+				.filter(Boolean)
+				.join(" • ") || "No filters applied";
+
+			const doc = createPdfReport(
+				"User Management Report",
+				`${filterText}`,
+				filters,
+				rows,
+				columns,
+				stats
+			);
+
+			triggerPdfDownload(buildPdfFileName("healthmate-users-report"), doc);
+			setSuccessMessage(`Users PDF exported successfully (${exportUsers.length} records).`);
+		} catch (error) {
+			setErrorMessage(error.response?.data?.message || "Failed to export users PDF.");
+		} finally {
+			setActionLoadingId("");
+		}
+	};
+
+	const handleExportPaymentsPdf = async () => {
+		setErrorMessage("");
+		setSuccessMessage("");
+		setActionLoadingId("export-payments");
+
+		try {
+			const filters = {
+				search: paymentFilters.search.trim(),
+				status: paymentFilters.status,
+				provider: paymentFilters.provider,
+				currency: paymentFilters.currency.trim().toUpperCase(),
+				minAmount: paymentFilters.minAmount.toString().trim(),
+				maxAmount: paymentFilters.maxAmount.toString().trim(),
+			};
+
+			const exportPayments = await collectPaginatedRecords(fetchPaymentTransactions, "transactions", filters);
+			if (exportPayments.length === 0) {
+				setErrorMessage("No payment transactions found to export for the selected filters.");
+				return;
+			}
+
+			const columns = [
+				"Transaction ID",
+				"Amount",
+				"Provider",
+				"Status",
+				"Reference",
+				"Appointment ID",
+				"Created At",
+			];
+
+			const rows = exportPayments.map((item) => [
+				item.transactionId || "",
+				formatAmount(item.amount, item.currency || "LKR"),
+				item.provider || "",
+				item.status || "pending",
+				item.paymentReference || "-",
+				item.appointmentId || "-",
+				formatDateTime(item.createdAt),
+			]);
+
+			// Calculate summary statistics
+			const succeededCount = exportPayments.filter((p) => p.status === "succeeded").length;
+			const pendingCount = exportPayments.filter((p) => p.status === "pending").length;
+			const failedCount = exportPayments.filter((p) => p.status === "failed").length;
+			const totalAmount = exportPayments.reduce((sum, p) => sum + (p.amount || 0), 0);
+			const succeededAmount = exportPayments
+				.filter((p) => p.status === "succeeded")
+				.reduce((sum, p) => sum + (p.amount || 0), 0);
+
+			const stats = {
+				"Total Transactions": exportPayments.length,
+				"Successful": succeededCount,
+				"Pending": pendingCount,
+				"Failed": failedCount,
+				"Total Amount": formatAmount(totalAmount, "LKR"),
+				"Revenue": formatAmount(succeededAmount, "LKR"),
+			};
+
+			const filterText = [
+				paymentFilters.search.trim() && `Search: "${paymentFilters.search.trim()}"`,
+				paymentFilters.status && `Status: ${paymentFilters.status}`,
+				paymentFilters.provider && `Provider: ${paymentFilters.provider}`,
+				(paymentFilters.minAmount || paymentFilters.maxAmount) &&
+					`Amount: ${paymentFilters.minAmount || "0"}-${paymentFilters.maxAmount || "∞"}`,
+			]
+				.filter(Boolean)
+				.join(" • ") || "No filters applied";
+
+			const doc = createPdfReport(
+				"Payment Management Report",
+				`${filterText}`,
+				filters,
+				rows,
+				columns,
+				stats
+			);
+
+			triggerPdfDownload(buildPdfFileName("healthmate-payments-report"), doc);
+			setSuccessMessage(`Payments PDF exported successfully (${exportPayments.length} records).`);
+		} catch (error) {
+			setErrorMessage(error.response?.data?.message || "Failed to export payments PDF.");
+		} finally {
+			setActionLoadingId("");
+		}
+	};
+
 	const renderOverview = () => (
 		<div className="mt-5 space-y-5">
 			<section className="rounded-2xl border border-slate-200 bg-white p-5">
@@ -631,6 +1045,14 @@ function AdminDashboardPage() {
 				<h2 className="text-sm font-semibold text-slate-900">User Management</h2>
 				<div className="flex items-center gap-3">
 					<span className="text-xs font-semibold text-slate-500">{userPagination.total} users</span>
+					<button
+						type="button"
+						onClick={handleExportUsersPdf}
+						disabled={actionLoadingId === "export-users"}
+						className="rounded-xl border border-slate-300 px-4 py-2 text-sm font-semibold text-slate-700 disabled:opacity-60"
+					>
+						Export PDF
+					</button>
 					<button
 						type="button"
 						onClick={() => {
@@ -920,7 +1342,17 @@ function AdminDashboardPage() {
 		<section className="rounded-2xl border border-slate-200 bg-white p-5">
 			<div className="mb-4 flex items-center justify-between">
 				<h2 className="text-sm font-semibold text-slate-900">Payment Management</h2>
-				<span className="text-xs font-semibold text-slate-500">{paymentPagination.total} transactions</span>
+				<div className="flex items-center gap-3">
+					<span className="text-xs font-semibold text-slate-500">{paymentPagination.total} transactions</span>
+					<button
+						type="button"
+						onClick={handleExportPaymentsPdf}
+						disabled={actionLoadingId === "export-payments"}
+						className="rounded-xl border border-slate-300 px-4 py-2 text-sm font-semibold text-slate-700 disabled:opacity-60"
+					>
+						Export PDF
+					</button>
+				</div>
 			</div>
 
 			<form
