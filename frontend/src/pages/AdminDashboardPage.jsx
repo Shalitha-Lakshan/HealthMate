@@ -16,6 +16,13 @@ import {
 	updateDoctorVerificationStatus,
 	updateUserStatus,
 } from "../services/adminApi";
+import {
+	fetchAdminAppointments,
+	rescheduleAdminAppointment,
+	cancelAdminAppointment,
+	completeAdminAppointment,
+	deleteAdminAppointment,
+} from "../services/appointmentApi";
 
 const formatDateTime = (value) => {
 	if (!value) {
@@ -70,6 +77,26 @@ const paymentStatusClass = (status) => {
 	}
 
 	return "bg-amber-100 text-amber-700";
+};
+
+const appointmentStatusClass = (status) => {
+	if (status === "confirmed") {
+		return "bg-emerald-100 text-emerald-700";
+	}
+
+	if (status === "completed") {
+		return "bg-sky-100 text-sky-700";
+	}
+
+	if (status === "cancelled" || status === "rejected" || status === "payment_failed") {
+		return "bg-rose-100 text-rose-700";
+	}
+
+	if (status === "pending_payment" || status === "pending") {
+		return "bg-amber-100 text-amber-700";
+	}
+
+	return "bg-slate-200 text-slate-700";
 };
 
 const formatAmount = (amount, currency = "LKR") =>
@@ -331,6 +358,13 @@ function AdminDashboardPage() {
 		minAmount: "",
 		maxAmount: "",
 	};
+	const defaultAppointmentFilters = {
+		search: "",
+		status: "",
+		doctor: "",
+		startDate: "",
+		endDate: "",
+	};
 
 	const [activeMenuItem, setActiveMenuItem] = useState("Overview");
 	const [stats, setStats] = useState(null);
@@ -342,17 +376,24 @@ function AdminDashboardPage() {
 	const [paymentStats, setPaymentStats] = useState(null);
 	const [paymentTransactions, setPaymentTransactions] = useState([]);
 	const [paymentPagination, setPaymentPagination] = useState({ page: 1, limit: 20, total: 0, totalPages: 1 });
+	const [appointments, setAppointments] = useState([]);
+	const [appointmentPagination, setAppointmentPagination] = useState({ page: 1, limit: 20, total: 0, totalPages: 1 });
 	const [isLoading, setIsLoading] = useState(true);
 	const [actionLoadingId, setActionLoadingId] = useState("");
 	const [errorMessage, setErrorMessage] = useState("");
 	const [successMessage, setSuccessMessage] = useState("");
 	const [userFilters, setUserFilters] = useState(defaultUserFilters);
 	const [paymentFilters, setPaymentFilters] = useState(defaultPaymentFilters);
+	const [appointmentFilters, setAppointmentFilters] = useState(defaultAppointmentFilters);
 	const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
 	const [isEditModalOpen, setIsEditModalOpen] = useState(false);
 	const [deleteTarget, setDeleteTarget] = useState(null);
+	const [rescheduleTarget, setRescheduleTarget] = useState(null);
+	const [cancelTarget, setCancelTarget] = useState(null);
+	const [deleteAppointmentTarget, setDeleteAppointmentTarget] = useState(null);
 	const [createUserForm, setCreateUserForm] = useState(initialUserForm);
 	const [editUserForm, setEditUserForm] = useState({ ...initialUserForm, id: "" });
+	const [rescheduleForm, setRescheduleForm] = useState({ appointmentDate: "", slotTime: "" });
 
 	const adminStats = useMemo(
 		() => [
@@ -400,7 +441,13 @@ function AdminDashboardPage() {
 				? "payment"
 				: activeMenuItem === "Operations"
 					? "operations"
-					: "admin";
+					: activeMenuItem === "Appointment Management"
+						? "appointments"
+						: "admin";
+
+		if (moduleKey === "appointments") {
+			return [];
+		}
 
 		const cardsForModule = moduleKpiCatalog.filter((card) => card.module === moduleKey);
 
@@ -428,6 +475,35 @@ function AdminDashboardPage() {
 			),
 		[paymentFilters]
 	);
+
+	const hasActiveAppointmentFilters = useMemo(
+		() =>
+			Boolean(
+				appointmentFilters.search.trim() ||
+				appointmentFilters.status ||
+				appointmentFilters.doctor ||
+				appointmentFilters.startDate ||
+				appointmentFilters.endDate
+			),
+		[appointmentFilters]
+	);
+
+	const appointmentSummaryCards = useMemo(() => {
+		const confirmed = appointments.filter((item) => item.status === "confirmed").length;
+		const completed = appointments.filter((item) => item.status === "completed").length;
+		const cancelled = appointments.filter((item) => item.status === "cancelled").length;
+		const pending = appointments.filter((item) =>
+			["pending_payment", "pending"].includes(item.status)
+		).length;
+
+		return [
+			{ label: "Current View", value: appointments.length, meta: "Appointments on this page" },
+			{ label: "Confirmed", value: confirmed, meta: "Ready for consultation" },
+			{ label: "Pending", value: pending, meta: "Awaiting payment or approval" },
+			{ label: "Completed", value: completed, meta: "Closed consultations" },
+			{ label: "Cancelled", value: cancelled, meta: "Cancelled by admin" },
+		];
+	}, [appointments]);
 
 	const overviewCards = useMemo(() => {
 		const totalTransactions = paymentStats?.totalTransactions ?? 0;
@@ -550,6 +626,39 @@ function AdminDashboardPage() {
 		}
 	};
 
+	const loadAdminAppointments = async (page = 1, overrides = {}) => {
+		setErrorMessage("");
+		try {
+			const params = {
+				page,
+				limit: appointmentPagination.limit,
+				search: (overrides.search ?? appointmentFilters.search).trim(),
+				status: overrides.status ?? appointmentFilters.status,
+				doctor: (overrides.doctor ?? appointmentFilters.doctor).trim(),
+				startDate: overrides.startDate ?? appointmentFilters.startDate,
+				endDate: overrides.endDate ?? appointmentFilters.endDate,
+			};
+
+			const response = await fetchAdminAppointments(params);
+			setAppointments(response.appointments || []);
+			setAppointmentPagination(response.pagination || { page: 1, limit: 20, total: 0, totalPages: 1 });
+		} catch (error) {
+			setErrorMessage(error.response?.data?.message || "Failed to load appointments.");
+		}
+	};
+
+	const handleApplyAppointmentFilters = async () => {
+		await loadAdminAppointments(1, {
+			search: appointmentFilters.search.trim(),
+			doctor: appointmentFilters.doctor.trim(),
+		});
+	};
+
+	const handleClearAppointmentFilters = async () => {
+		setAppointmentFilters(defaultAppointmentFilters);
+		await loadAdminAppointments(1, defaultAppointmentFilters);
+	};
+
 	const handleApplyPaymentFilters = async () => {
 		await loadPaymentTransactions(1, {
 			search: paymentFilters.search.trim(),
@@ -573,6 +682,10 @@ function AdminDashboardPage() {
 	useEffect(() => {
 		if (activeMenuItem === "User Management") {
 			loadUsers(1);
+		}
+
+		if (activeMenuItem === "Appointment Management") {
+			loadAdminAppointments(1);
 		}
 
 		if (activeMenuItem === "Payment Management") {
@@ -608,6 +721,18 @@ function AdminDashboardPage() {
 
 		return () => clearTimeout(debounceTimer);
 	}, [activeMenuItem, paymentFilters.search]);
+
+	useEffect(() => {
+		if (activeMenuItem !== "Appointment Management") {
+			return undefined;
+		}
+
+		const debounceTimer = setTimeout(() => {
+			loadAdminAppointments(1, { search: appointmentFilters.search.trim() });
+		}, 400);
+
+		return () => clearTimeout(debounceTimer);
+	}, [activeMenuItem, appointmentFilters.search]);
 
 	const handleVerificationAction = async (doctorId, status) => {
 		setErrorMessage("");
@@ -754,6 +879,171 @@ function AdminDashboardPage() {
 			await Promise.all([loadUsers(userPagination.page), loadAdminData(), loadAuditLogs()]);
 		} catch (error) {
 			setErrorMessage(error.response?.data?.message || "Failed to delete user.");
+		} finally {
+			setActionLoadingId("");
+		}
+	};
+
+	const handleRescheduleAppointment = async (event) => {
+		event.preventDefault();
+		if (!rescheduleTarget?.id) {
+			return;
+		}
+
+		setErrorMessage("");
+		setSuccessMessage("");
+		setActionLoadingId(`reschedule-${rescheduleTarget.id}`);
+
+		try {
+			await rescheduleAdminAppointment(rescheduleTarget.id, {
+				appointmentDate: rescheduleForm.appointmentDate,
+				slotTime: rescheduleForm.slotTime,
+			});
+			setSuccessMessage("Appointment rescheduled successfully.");
+			setRescheduleTarget(null);
+			setRescheduleForm({ appointmentDate: "", slotTime: "" });
+			await loadAdminAppointments(appointmentPagination.page);
+		} catch (error) {
+			setErrorMessage(error.response?.data?.message || "Failed to reschedule appointment.");
+		} finally {
+			setActionLoadingId("");
+		}
+	};
+
+	const handleCancelAppointment = async () => {
+		if (!cancelTarget?.id) {
+			return;
+		}
+
+		setErrorMessage("");
+		setSuccessMessage("");
+		setActionLoadingId(`cancel-${cancelTarget.id}`);
+
+		try {
+			await cancelAdminAppointment(cancelTarget.id);
+			setSuccessMessage("Appointment cancelled successfully.");
+			setCancelTarget(null);
+			await loadAdminAppointments(appointmentPagination.page);
+		} catch (error) {
+			setErrorMessage(error.response?.data?.message || "Failed to cancel appointment.");
+		} finally {
+			setActionLoadingId("");
+		}
+	};
+
+	const handleCompleteAppointment = async (appointmentId) => {
+		setErrorMessage("");
+		setSuccessMessage("");
+		setActionLoadingId(`complete-${appointmentId}`);
+
+		try {
+			await completeAdminAppointment(appointmentId);
+			setSuccessMessage("Consultation marked as completed.");
+			await loadAdminAppointments(appointmentPagination.page);
+		} catch (error) {
+			setErrorMessage(error.response?.data?.message || "Failed to complete consultation.");
+		} finally {
+			setActionLoadingId("");
+		}
+	};
+
+	const handleDeleteAppointment = async () => {
+		if (!deleteAppointmentTarget?.id) {
+			return;
+		}
+
+		setErrorMessage("");
+		setSuccessMessage("");
+		setActionLoadingId(`delete-${deleteAppointmentTarget.id}`);
+
+		try {
+			await deleteAdminAppointment(deleteAppointmentTarget.id);
+			setSuccessMessage("Appointment deleted successfully.");
+			setDeleteAppointmentTarget(null);
+			await loadAdminAppointments(appointmentPagination.page);
+		} catch (error) {
+			setErrorMessage(error.response?.data?.message || "Failed to delete appointment.");
+		} finally {
+			setActionLoadingId("");
+		}
+	};
+
+	const handleExportAppointmentsPdf = async () => {
+		setErrorMessage("");
+		setSuccessMessage("");
+		setActionLoadingId("export-appointments");
+
+		try {
+			const filters = {
+				search: appointmentFilters.search.trim(),
+				status: appointmentFilters.status,
+				doctor: appointmentFilters.doctor.trim(),
+				startDate: appointmentFilters.startDate,
+				endDate: appointmentFilters.endDate,
+			};
+
+			const exportAppointments = await collectPaginatedRecords(fetchAdminAppointments, "appointments", filters);
+			if (exportAppointments.length === 0) {
+				setErrorMessage("No appointments found to export for the selected filters.");
+				return;
+			}
+
+			const columns = [
+				"Appointment ID",
+				"Patient",
+				"Doctor",
+				"Date",
+				"Time",
+				"Status",
+				"Payment",
+				"Mode",
+			];
+
+			const rows = exportAppointments.map((item) => [
+				item.appointmentId || "",
+				item.patientName || "",
+				item.doctorName || "",
+				item.appointmentDate || "",
+				item.slotTime || "",
+				item.status || "",
+				item.paymentStatus || "",
+				item.mode || "",
+			]);
+
+			const confirmedCount = exportAppointments.filter((item) => item.status === "confirmed").length;
+			const completedCount = exportAppointments.filter((item) => item.status === "completed").length;
+			const cancelledCount = exportAppointments.filter((item) => item.status === "cancelled").length;
+
+			const stats = {
+				"Total Appointments": exportAppointments.length,
+				"Confirmed": confirmedCount,
+				"Completed": completedCount,
+				"Cancelled": cancelledCount,
+			};
+
+			const filterText = [
+				appointmentFilters.search.trim() && `Search: "${appointmentFilters.search.trim()}"`,
+				appointmentFilters.status && `Status: ${appointmentFilters.status}`,
+				appointmentFilters.doctor && `Doctor: ${appointmentFilters.doctor}`,
+				(appointmentFilters.startDate || appointmentFilters.endDate) &&
+					`Date: ${appointmentFilters.startDate || "any"} - ${appointmentFilters.endDate || "any"}`,
+			]
+				.filter(Boolean)
+				.join(" • ") || "No filters applied";
+
+			const doc = createPdfReport(
+				"Appointment Management Report",
+				filterText,
+				filters,
+				rows,
+				columns,
+				stats
+			);
+
+			triggerPdfDownload(buildPdfFileName("healthmate-appointments-report"), doc);
+			setSuccessMessage(`Appointments PDF exported successfully (${exportAppointments.length} records).`);
+		} catch (error) {
+			setErrorMessage(error.response?.data?.message || "Failed to export appointments PDF.");
 		} finally {
 			setActionLoadingId("");
 		}
@@ -1495,6 +1785,275 @@ function AdminDashboardPage() {
 		</section>
 	);
 
+	const renderAppointmentManagement = () => (
+		<section className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
+			<div className="flex flex-wrap items-center justify-between gap-4">
+				<div>
+					<p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Appointments</p>
+					<h2 className="mt-2 text-lg font-semibold text-slate-900">Appointment Management</h2>
+					<p className="mt-1 text-xs text-slate-500">Monitor bookings, manage schedule changes, and complete consultations.</p>
+				</div>
+				<div className="flex items-center gap-3">
+					<span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-600">
+						{appointmentPagination.total} total
+					</span>
+					<button
+						type="button"
+						onClick={handleExportAppointmentsPdf}
+						disabled={actionLoadingId === "export-appointments"}
+						className="rounded-full border border-slate-300 px-4 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50 disabled:opacity-60"
+					>
+						Export PDF
+					</button>
+				</div>
+			</div>
+
+			<div className="mt-5 grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
+				{appointmentSummaryCards.map((card) => (
+					<div key={card.label} className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
+						<p className="text-[11px] uppercase tracking-wide text-slate-500">{card.label}</p>
+						<p className="mt-2 text-2xl font-semibold text-slate-900">{card.value}</p>
+						<p className="mt-1 text-xs text-slate-500">{card.meta}</p>
+					</div>
+				))}
+			</div>
+
+			<form
+				onSubmit={(event) => {
+					event.preventDefault();
+					handleApplyAppointmentFilters();
+				}}
+				className="mt-6 rounded-2xl border border-slate-200 bg-linear-to-br from-slate-50 to-white p-4"
+			>
+				<div className="flex flex-wrap items-center justify-between gap-2">
+					<div>
+						<p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Filters</p>
+						<p className="mt-1 text-[11px] text-slate-400">Search by patient, doctor, or appointment ID</p>
+					</div>
+					{hasActiveAppointmentFilters && (
+						<button
+							type="button"
+							onClick={handleClearAppointmentFilters}
+							className="rounded-full border border-slate-300 px-3 py-1 text-[11px] font-semibold text-slate-600"
+						>
+							Clear filters
+						</button>
+					)}
+				</div>
+
+				<div className="mt-4 grid gap-3 lg:grid-cols-[1.6fr_1fr_1fr_1fr_1fr_auto]">
+					<input
+						type="text"
+						value={appointmentFilters.search}
+						onChange={(event) => setAppointmentFilters((prev) => ({ ...prev, search: event.target.value }))}
+						placeholder="Search appointments"
+						className="rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm"
+					/>
+					<select
+						value={appointmentFilters.status}
+						onChange={(event) => setAppointmentFilters((prev) => ({ ...prev, status: event.target.value }))}
+						className="rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm"
+					>
+						<option value="">Status</option>
+						<option value="pending_payment">Pending payment</option>
+						<option value="pending">Pending approval</option>
+						<option value="confirmed">Confirmed</option>
+						<option value="completed">Completed</option>
+						<option value="cancelled">Cancelled</option>
+						<option value="expired">Expired</option>
+					</select>
+					<input
+						type="text"
+						value={appointmentFilters.doctor}
+						onChange={(event) => setAppointmentFilters((prev) => ({ ...prev, doctor: event.target.value }))}
+						placeholder="Doctor"
+						className="rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm"
+					/>
+					<input
+						type="date"
+						value={appointmentFilters.startDate}
+						onChange={(event) => setAppointmentFilters((prev) => ({ ...prev, startDate: event.target.value }))}
+						className="rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm"
+					/>
+					<input
+						type="date"
+						value={appointmentFilters.endDate}
+						onChange={(event) => setAppointmentFilters((prev) => ({ ...prev, endDate: event.target.value }))}
+						className="rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm"
+					/>
+					<button type="submit" className="rounded-xl bg-blue-600 px-4 py-2 text-sm font-semibold text-white">
+						Apply
+					</button>
+				</div>
+
+				{hasActiveAppointmentFilters && (
+					<div className="mt-3 flex flex-wrap items-center gap-2">
+						<span className="text-[11px] text-slate-500">Active:</span>
+						{appointmentFilters.search.trim() && (
+							<span className="rounded-full bg-white px-3 py-1 text-[11px] font-semibold text-slate-600">
+								Search: {appointmentFilters.search.trim()}
+							</span>
+						)}
+						{appointmentFilters.status && (
+							<span className="rounded-full bg-white px-3 py-1 text-[11px] font-semibold text-slate-600">
+								Status: {appointmentFilters.status}
+							</span>
+						)}
+						{appointmentFilters.doctor && (
+							<span className="rounded-full bg-white px-3 py-1 text-[11px] font-semibold text-slate-600">
+								Doctor: {appointmentFilters.doctor}
+							</span>
+						)}
+						{(appointmentFilters.startDate || appointmentFilters.endDate) && (
+							<span className="rounded-full bg-white px-3 py-1 text-[11px] font-semibold text-slate-600">
+								Date: {appointmentFilters.startDate || "any"} - {appointmentFilters.endDate || "any"}
+							</span>
+						)}
+					</div>
+				)}
+			</form>
+
+			<div className="mt-6 overflow-x-auto rounded-2xl border border-slate-200">
+				<table className="min-w-full text-left text-sm">
+					<thead className="bg-slate-50">
+						<tr className="text-xs uppercase text-slate-500">
+							<th className="px-4 py-3">Appointment</th>
+							<th className="px-4 py-3">Patient</th>
+							<th className="px-4 py-3">Doctor</th>
+							<th className="px-4 py-3">Schedule</th>
+							<th className="px-4 py-3">Status</th>
+							<th className="px-4 py-3">Payment</th>
+							<th className="px-4 py-3 text-right">Actions</th>
+						</tr>
+					</thead>
+					<tbody>
+						{appointments.length === 0 ? (
+							<tr>
+								<td colSpan={7} className="px-4 py-8 text-center text-sm text-slate-500">
+									No appointments match the current filters. Try clearing filters or selecting a wider date range.
+								</td>
+							</tr>
+						) : (
+							appointments.map((item) => {
+								const disableReschedule = ["completed", "cancelled", "expired", "rejected"].includes(item.status);
+								const canDeleteAppointment = ["cancelled", "pending_payment", "pending", "expired", "rejected", "payment_failed"].includes(
+									item.status
+								);
+								return (
+									<tr key={item.id} className="border-t border-slate-100 text-slate-700">
+										<td className="px-4 py-4">
+											<p className="text-sm font-semibold text-slate-900">{item.appointmentId || item.id}</p>
+											<span className="mt-1 inline-flex rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-semibold uppercase text-slate-600">
+												{item.mode || "in-person"}
+											</span>
+										</td>
+										<td className="px-4 py-4">
+											<p className="text-sm font-semibold text-slate-900">{item.patientName}</p>
+											<p className="text-xs text-slate-500">{item.patientEmail}</p>
+										</td>
+										<td className="px-4 py-4">
+											<p className="text-sm font-semibold text-slate-900">{item.doctorName}</p>
+											<p className="text-xs text-slate-500">{item.specialty || "General"}</p>
+										</td>
+										<td className="px-4 py-4">
+											<p className="text-sm font-semibold text-slate-900">{item.appointmentDate}</p>
+											<p className="text-xs text-slate-500">{item.slotTime}</p>
+										</td>
+										<td className="px-4 py-4">
+											<span className={`rounded-full px-2.5 py-1 text-[11px] font-semibold ${appointmentStatusClass(item.status)}`}>
+												{item.status}
+											</span>
+										</td>
+										<td className="px-4 py-4">
+											<span className={`rounded-full px-2.5 py-1 text-[11px] font-semibold ${paymentStatusClass(item.paymentStatus)}`}>
+												{item.paymentStatus || "pending"}
+											</span>
+										</td>
+										<td className="px-4 py-4">
+											<div className="flex flex-wrap justify-end gap-2">
+												<button
+													type="button"
+													onClick={() => {
+														setRescheduleTarget({ id: item.id, label: item.appointmentId || item.id });
+														setRescheduleForm({
+															appointmentDate: item.appointmentDate || "",
+															slotTime: item.slotTime || "",
+														});
+													}}
+													disabled={disableReschedule || actionLoadingId === `reschedule-${item.id}`}
+													className="rounded-full border border-blue-200 px-3 py-1 text-[11px] font-semibold text-blue-700 disabled:opacity-60"
+												>
+													Reschedule
+												</button>
+												<button
+													type="button"
+													onClick={() => setCancelTarget({ id: item.id, label: item.appointmentId || item.id })}
+													disabled={actionLoadingId === `cancel-${item.id}` || item.status === "completed"}
+													className="rounded-full border border-rose-200 px-3 py-1 text-[11px] font-semibold text-rose-600 disabled:opacity-60"
+												>
+													Cancel
+												</button>
+												<button
+													type="button"
+													onClick={() => handleCompleteAppointment(item.id)}
+													disabled={item.status !== "confirmed" || actionLoadingId === `complete-${item.id}`}
+													className="rounded-full bg-emerald-600 px-3 py-1 text-[11px] font-semibold text-white disabled:opacity-60"
+												>
+													Complete
+												</button>
+												<button
+													type="button"
+													onClick={() => {
+														if (canDeleteAppointment) {
+															setDeleteAppointmentTarget({ id: item.id, label: item.appointmentId || item.id });
+														}
+													}}
+													disabled={!canDeleteAppointment || actionLoadingId === `delete-${item.id}`}
+													title={
+														canDeleteAppointment
+															? "Delete appointment"
+															: "Completed or confirmed appointments cannot be deleted"
+													}
+													className="rounded-full border border-slate-300 px-3 py-1 text-[11px] font-semibold text-slate-700 disabled:opacity-60"
+												>
+													Delete
+												</button>
+											</div>
+										</td>
+									</tr>
+								);
+							})
+						)}
+					</tbody>
+				</table>
+			</div>
+
+			<div className="mt-5 flex flex-wrap items-center justify-between gap-3">
+				<p className="text-xs text-slate-500">
+					Page {appointmentPagination.page} of {appointmentPagination.totalPages}
+				</p>
+				<div className="flex gap-2">
+					<button
+						type="button"
+						onClick={() => loadAdminAppointments(Math.max(appointmentPagination.page - 1, 1))}
+						disabled={appointmentPagination.page <= 1}
+						className="rounded-full border border-slate-300 px-4 py-1.5 text-xs font-semibold text-slate-700 disabled:opacity-50"
+					>
+						Previous
+					</button>
+					<button
+						type="button"
+						onClick={() => loadAdminAppointments(Math.min(appointmentPagination.page + 1, appointmentPagination.totalPages))}
+						disabled={appointmentPagination.page >= appointmentPagination.totalPages}
+						className="rounded-full border border-slate-300 px-4 py-1.5 text-xs font-semibold text-slate-700 disabled:opacity-50"
+					>
+						Next
+					</button>
+				</div>
+			</div>
+		</section>
+	);
+
 	const renderUserModalFields = (form, setForm, includePassword) => (
 		<div className="grid gap-3 md:grid-cols-2">
 			<input
@@ -1613,6 +2172,7 @@ function AdminDashboardPage() {
 					{activeMenuItem === "Overview" && renderOverview()}
 					{activeMenuItem === "User Management" && renderUserManagement()}
 					{activeMenuItem === "Doctor Verification" && renderVerification()}
+					{activeMenuItem === "Appointment Management" && renderAppointmentManagement()}
 					{activeMenuItem === "Payment Management" && renderPaymentManagement()}
 					{activeMenuItem === "Operations" && renderOperations()}
 				</>
@@ -1713,6 +2273,112 @@ function AdminDashboardPage() {
 								className="rounded-xl bg-rose-600 px-4 py-2 text-sm font-semibold text-white disabled:opacity-60"
 							>
 								Delete User
+							</button>
+						</div>
+					</div>
+				</div>
+			)}
+
+			{rescheduleTarget && (
+				<div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 p-4">
+					<div className="w-full max-w-md rounded-2xl border border-slate-200 bg-white p-5">
+						<div className="mb-4 flex items-center justify-between">
+							<h3 className="text-base font-semibold text-slate-900">Reschedule Appointment</h3>
+							<button
+								type="button"
+								onClick={() => setRescheduleTarget(null)}
+								className="rounded-lg border border-slate-300 px-3 py-1 text-xs font-semibold text-slate-700"
+							>
+								Close
+							</button>
+						</div>
+						<p className="text-sm text-slate-600">Appointment: {rescheduleTarget.label}</p>
+						<form onSubmit={handleRescheduleAppointment} className="mt-4 space-y-3">
+							<input
+								type="date"
+								value={rescheduleForm.appointmentDate}
+								onChange={(event) => setRescheduleForm((prev) => ({ ...prev, appointmentDate: event.target.value }))}
+								required
+								className="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm"
+							/>
+							<input
+								type="time"
+								value={rescheduleForm.slotTime}
+								onChange={(event) => setRescheduleForm((prev) => ({ ...prev, slotTime: event.target.value }))}
+								required
+								className="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm"
+							/>
+							<div className="flex justify-end gap-2">
+								<button
+									type="button"
+									onClick={() => setRescheduleTarget(null)}
+									className="rounded-xl border border-slate-300 px-4 py-2 text-sm font-semibold text-slate-700"
+								>
+									Cancel
+								</button>
+								<button
+									type="submit"
+									disabled={actionLoadingId === `reschedule-${rescheduleTarget.id}`}
+									className="rounded-xl bg-blue-600 px-4 py-2 text-sm font-semibold text-white disabled:opacity-60"
+								>
+									Reschedule
+								</button>
+							</div>
+						</form>
+					</div>
+				</div>
+			)}
+
+			{cancelTarget && (
+				<div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 p-4">
+					<div className="w-full max-w-md rounded-2xl border border-slate-200 bg-white p-5">
+						<h3 className="text-base font-semibold text-slate-900">Cancel Appointment</h3>
+						<p className="mt-2 text-sm text-slate-600">
+							Are you sure you want to cancel appointment <span className="font-semibold text-slate-900">{cancelTarget.label}</span>? The patient and doctor will be notified.
+						</p>
+						<div className="mt-5 flex justify-end gap-2">
+							<button
+								type="button"
+								onClick={() => setCancelTarget(null)}
+								className="rounded-xl border border-slate-300 px-4 py-2 text-sm font-semibold text-slate-700"
+							>
+								Keep
+							</button>
+							<button
+								type="button"
+								onClick={handleCancelAppointment}
+								disabled={actionLoadingId === `cancel-${cancelTarget.id}`}
+								className="rounded-xl bg-rose-600 px-4 py-2 text-sm font-semibold text-white disabled:opacity-60"
+							>
+								Cancel Appointment
+							</button>
+						</div>
+					</div>
+				</div>
+			)}
+
+			{deleteAppointmentTarget && (
+				<div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 p-4">
+					<div className="w-full max-w-md rounded-2xl border border-slate-200 bg-white p-5">
+						<h3 className="text-base font-semibold text-slate-900">Delete Appointment</h3>
+						<p className="mt-2 text-sm text-slate-600">
+							Delete appointment <span className="font-semibold text-slate-900">{deleteAppointmentTarget.label}</span>? This permanently removes the record.
+						</p>
+						<div className="mt-5 flex justify-end gap-2">
+							<button
+								type="button"
+								onClick={() => setDeleteAppointmentTarget(null)}
+								className="rounded-xl border border-slate-300 px-4 py-2 text-sm font-semibold text-slate-700"
+							>
+								Keep
+							</button>
+							<button
+								type="button"
+								onClick={handleDeleteAppointment}
+								disabled={actionLoadingId === `delete-${deleteAppointmentTarget.id}`}
+								className="rounded-xl bg-slate-900 px-4 py-2 text-sm font-semibold text-white disabled:opacity-60"
+							>
+								Delete Appointment
 							</button>
 						</div>
 					</div>

@@ -48,3 +48,28 @@ export const completeConsultation = async (appointmentId) => {
 };
 
 export const createAppointment = createAppointmentHold;
+
+export const fetchAdminAppointments = async (params) => {
+	const response = await appointmentApi.get("/admin", { params });
+	return response.data;
+};
+
+export const rescheduleAdminAppointment = async (appointmentId, payload) => {
+	const response = await appointmentApi.patch(`/admin/${appointmentId}/reschedule`, payload);
+	return response.data;
+};
+
+export const cancelAdminAppointment = async (appointmentId) => {
+	const response = await appointmentApi.patch(`/admin/${appointmentId}/cancel`);
+	return response.data;
+};
+
+export const completeAdminAppointment = async (appointmentId) => {
+	const response = await appointmentApi.patch(`/admin/${appointmentId}/complete`);
+	return response.data;
+};
+
+export const deleteAdminAppointment = async (appointmentId) => {
+	const response = await appointmentApi.delete(`/admin/${appointmentId}`);
+	return response.data;
+};
