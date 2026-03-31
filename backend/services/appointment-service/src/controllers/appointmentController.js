@@ -1,3 +1,4 @@
+const { Types } = require("mongoose");
 const Appointment = require("../models/Appointment");
 
 const SLOT_INTERVAL_MINUTES = 30;
@@ -122,6 +123,35 @@ const sendAppointmentNotification = async ({ eventType, appointment }) => {
 		console.error("failed to dispatch notification event", error.message);
 	}
 };
+
+const sanitizeAppointment = (appointment) => ({
+	id: appointment._id,
+	appointmentId: appointment.appointmentId,
+	patientId: appointment.patientId,
+	patientName: appointment.patientName,
+	patientEmail: appointment.patientEmail,
+	patientPhone: appointment.patientPhone,
+	patientAge: appointment.patientAge,
+	doctorId: appointment.doctorId,
+	doctorName: appointment.doctorName,
+	doctorEmail: appointment.doctorEmail,
+	doctorPhone: appointment.doctorPhone,
+	specialty: appointment.specialty,
+	appointmentDateTime: appointment.appointmentDateTime,
+	appointmentDate: appointment.appointmentDate,
+	slotTime: appointment.slotTime,
+	mode: appointment.mode,
+	reason: appointment.reason,
+	status: appointment.status,
+	paymentStatus: appointment.paymentStatus,
+	consultationFee: appointment.consultationFee,
+	currency: appointment.currency,
+	paymentMethod: appointment.paymentMethod,
+	paymentReference: appointment.paymentReference,
+	paymentExpiresAt: appointment.paymentExpiresAt,
+	createdAt: appointment.createdAt,
+	updatedAt: appointment.updatedAt,
+});
 
 const finalizeAppointmentPayment = async ({ appointment, paymentMethod, paymentReference }) => {
 	if (appointment.paymentExpiresAt && appointment.paymentExpiresAt < new Date()) {
@@ -411,6 +441,237 @@ const confirmAppointmentPaymentInternal = async (req, res) => {
 	}
 };
 
+const getAdminAppointments = async (req, res) => {
+	try {
+		await releaseExpiredPendingPayments();
+
+		const status = (req.query.status || "").trim();
+		const search = (req.query.search || "").trim();
+		const doctor = (req.query.doctor || "").trim();
+		const startDate = (req.query.startDate || "").trim();
+		const endDate = (req.query.endDate || "").trim();
+		const page = Math.max(Number(req.query.page) || 1, 1);
+		const limit = Math.min(Math.max(Number(req.query.limit) || 20, 1), 100);
+		const skip = (page - 1) * limit;
+
+		const query = {};
+
+		if (status) {
+			query.status = status;
+		}
+
+		if (doctor) {
+			if (Types.ObjectId.isValid(doctor)) {
+				query.doctorId = doctor;
+			} else {
+				query.doctorName = { $regex: doctor, $options: "i" };
+			}
+		}
+
+		if (search) {
+			query.$or = [
+				{ appointmentId: { $regex: search, $options: "i" } },
+				{ patientName: { $regex: search, $options: "i" } },
+				{ patientEmail: { $regex: search, $options: "i" } },
+				{ doctorName: { $regex: search, $options: "i" } },
+				{ doctorEmail: { $regex: search, $options: "i" } },
+			];
+		}
+
+		const normalizedStart = startDate ? normalizeDateOnly(startDate) : null;
+		const normalizedEnd = endDate ? normalizeDateOnly(endDate) : null;
+		if (normalizedStart || normalizedEnd) {
+			query.appointmentDate = {
+				...(normalizedStart ? { $gte: normalizedStart } : {}),
+				...(normalizedEnd ? { $lte: normalizedEnd } : {}),
+			};
+		}
+
+		const [appointments, total] = await Promise.all([
+			Appointment.find(query)
+				.sort({ appointmentDateTime: 1 })
+				.skip(skip)
+				.limit(limit),
+			Appointment.countDocuments(query),
+		]);
+
+		return res.status(200).json({
+			appointments: appointments.map((appointment) => sanitizeAppointment(appointment)),
+			pagination: {
+				page,
+				limit,
+				total,
+				totalPages: Math.max(Math.ceil(total / limit), 1),
+			},
+		});
+	} catch (error) {
+		return res.status(500).json({ message: "failed to fetch admin appointments", error: error.message });
+	}
+};
+
+const rescheduleAppointment = async (req, res) => {
+	try {
+		const { id } = req.params;
+		const { appointmentDate, slotTime } = req.body;
+
+		if (!Types.ObjectId.isValid(id)) {
+			return res.status(400).json({ message: "invalid appointment id" });
+		}
+
+		if (!appointmentDate || !slotTime) {
+			return res.status(400).json({ message: "appointmentDate and slotTime are required" });
+		}
+
+		const appointment = await Appointment.findById(id);
+		if (!appointment) {
+			return res.status(404).json({ message: "appointment not found" });
+		}
+
+		if (["cancelled", "completed", "rejected", "expired"].includes(appointment.status)) {
+			return res.status(400).json({ message: "appointment cannot be rescheduled in its current state" });
+		}
+
+		const normalizedDate = normalizeDateOnly(appointmentDate);
+		if (!normalizedDate) {
+			return res.status(400).json({ message: "appointmentDate must be valid date" });
+		}
+
+		if (!isValidTimeSlot(slotTime)) {
+			return res.status(400).json({ message: "slotTime must be in HH:mm format" });
+		}
+
+		const parsedDate = buildDateTime(normalizedDate, slotTime);
+		if (Number.isNaN(parsedDate.getTime())) {
+			return res.status(400).json({ message: "appointment date-time must be valid" });
+		}
+
+		if (parsedDate <= new Date()) {
+			return res.status(400).json({ message: "appointment date and time must be in the future" });
+		}
+
+		const conflict = await Appointment.findOne({
+			_id: { $ne: id },
+			doctorId: appointment.doctorId,
+			appointmentDate: normalizedDate,
+			slotTime,
+			status: { $in: ["pending_payment", "confirmed", "completed"] },
+		});
+
+		if (conflict) {
+			return res.status(409).json({ message: "selected slot is no longer available" });
+		}
+
+		appointment.appointmentDate = normalizedDate;
+		appointment.slotTime = slotTime;
+		appointment.appointmentDateTime = parsedDate;
+
+		if (appointment.status === "pending_payment") {
+			appointment.paymentExpiresAt = new Date(Date.now() + PAYMENT_HOLD_MINUTES * 60 * 1000);
+		}
+
+		await appointment.save();
+		await sendAppointmentNotification({ eventType: "APPOINTMENT_RESCHEDULED", appointment });
+
+		return res.status(200).json({
+			message: "appointment rescheduled successfully",
+			appointment: sanitizeAppointment(appointment),
+		});
+	} catch (error) {
+		return res.status(500).json({ message: "failed to reschedule appointment", error: error.message });
+	}
+};
+
+const cancelAppointment = async (req, res) => {
+	try {
+		const { id } = req.params;
+
+		if (!Types.ObjectId.isValid(id)) {
+			return res.status(400).json({ message: "invalid appointment id" });
+		}
+
+		const appointment = await Appointment.findById(id);
+		if (!appointment) {
+			return res.status(404).json({ message: "appointment not found" });
+		}
+
+		if (appointment.status === "completed") {
+			return res.status(400).json({ message: "completed appointments cannot be cancelled" });
+		}
+
+		appointment.status = "cancelled";
+		if (appointment.paymentStatus === "pending") {
+			appointment.paymentStatus = "failed";
+		}
+		appointment.paymentExpiresAt = new Date();
+
+		await appointment.save();
+		await sendAppointmentNotification({ eventType: "APPOINTMENT_CANCELLED", appointment });
+
+		return res.status(200).json({
+			message: "appointment cancelled successfully",
+			appointment: sanitizeAppointment(appointment),
+		});
+	} catch (error) {
+		return res.status(500).json({ message: "failed to cancel appointment", error: error.message });
+	}
+};
+
+const completeConsultationAdmin = async (req, res) => {
+	try {
+		const { id } = req.params;
+
+		const appointment = await Appointment.findById(id);
+		if (!appointment) {
+			return res.status(404).json({ message: "appointment not found" });
+		}
+
+		if (appointment.status !== "confirmed") {
+			return res.status(400).json({ message: "only confirmed appointments can be completed" });
+		}
+
+		appointment.status = "completed";
+		await appointment.save();
+		await sendAppointmentNotification({ eventType: "CONSULTATION_COMPLETED", appointment });
+
+		return res.status(200).json({
+			message: "consultation marked as completed",
+			appointment: sanitizeAppointment(appointment),
+		});
+	} catch (error) {
+		return res.status(500).json({ message: "failed to complete consultation", error: error.message });
+	}
+};
+
+const deleteAppointmentAdmin = async (req, res) => {
+	try {
+		const { id } = req.params;
+
+		if (!Types.ObjectId.isValid(id)) {
+			return res.status(400).json({ message: "invalid appointment id" });
+		}
+
+		const appointment = await Appointment.findById(id);
+		if (!appointment) {
+			return res.status(404).json({ message: "appointment not found" });
+		}
+
+		const deletableStatuses = ["cancelled", "pending_payment", "pending", "expired", "rejected", "payment_failed"];
+		if (!deletableStatuses.includes(appointment.status)) {
+			return res.status(400).json({ message: "only pending/cancelled/expired appointments can be deleted" });
+		}
+
+		await Appointment.deleteOne({ _id: id });
+		await sendAppointmentNotification({ eventType: "APPOINTMENT_DELETED", appointment });
+
+		return res.status(200).json({
+			message: "appointment deleted successfully",
+			appointment: sanitizeAppointment(appointment),
+		});
+	} catch (error) {
+		return res.status(500).json({ message: "failed to delete appointment", error: error.message });
+	}
+};
+
 const completeConsultation = async (req, res) => {
 	try {
 		const { id } = req.params;
@@ -449,4 +710,9 @@ module.exports = {
 	confirmAppointmentPayment,
 	confirmAppointmentPaymentInternal,
 	completeConsultation,
+	getAdminAppointments,
+	rescheduleAppointment,
+	cancelAppointment,
+	completeConsultationAdmin,
+	deleteAppointmentAdmin,
 };

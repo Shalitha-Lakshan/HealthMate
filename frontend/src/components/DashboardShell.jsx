@@ -5,7 +5,7 @@ import { clearAuthStorage, getStoredUser } from "../utils/auth";
 const menuByRole = {
 	patient: ["Overview", "Appointments", "Medical Reports", "Telemedicine", "AI Assistant"],
 	doctor: ["Overview", "Schedule", "Consultations", "Prescriptions", "Telemedicine"],
-	admin: ["Overview", "User Management", "Doctor Verification", "Payment Management", "Operations"],
+	admin: ["Overview", "User Management", "Doctor Verification", "Appointment Management", "Payment Management", "Operations"],
 };
 
 function DashboardShell({ role = "patient", title, subtitle, children, onMenuChange, initialActiveMenuItem }) {
