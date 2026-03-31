@@ -1,6 +1,6 @@
 // src/pages/DoctorConsultationsPage.jsx
 import { useState, useEffect } from "react";
-import { fetchDoctorAppointments } from "../services/appointmentApi";
+import { fetchDoctorAppointments, completeConsultation } from "../services/appointmentApi";
 import { getStoredUser } from "../utils/auth";
 import { format, parseISO } from "date-fns";
 
@@ -17,9 +17,10 @@ export default function DoctorConsultationsPage() {
 		async function fetchConsultations() {
 			try {
 				setLoading(true);
-				if (doctorProfile._id) {
-					const data = await fetchDoctorAppointments(doctorProfile._id);
-					setAppointments(data.data || []);
+				if (doctorProfile._id || user.id || user._id) {
+					const docId = doctorProfile._id || user.id || user._id;
+					const data = await fetchDoctorAppointments(docId);
+					setAppointments(data.appointments || data.data || []);
 				}
 			} catch (error) {
 				console.error("Failed to fetch consultations:", error);
@@ -32,11 +33,27 @@ export default function DoctorConsultationsPage() {
 	}, [doctorProfile._id]);
 
 	const filteredConsultations = appointments.filter((apt) => {
-		if (activeTab === "Upcoming") return apt.status === "scheduled";
+		if (activeTab === "Upcoming") return apt.status === "confirmed";
 		if (activeTab === "Completed") return apt.status === "completed";
 		if (activeTab === "Cancelled") return apt.status === "cancelled";
 		return true;
 	});
+
+	const handleComplete = async (appointmentId) => {
+		try {
+			await completeConsultation(appointmentId);
+			// Update local state to reflect the change
+			setAppointments(prev => prev.map(apt => 
+				apt._id === appointmentId ? { ...apt, status: "completed" } : apt
+			));
+			if (selectedConsultation?._id === appointmentId) {
+				setSelectedConsultation(prev => ({ ...prev, status: "completed" }));
+			}
+		} catch (error) {
+			console.error("Failed to complete consultation:", error);
+			alert("Failed to mark consultation as completed.");
+		}
+	};
 
 	return (
 		<div className="space-y-6">
@@ -49,7 +66,7 @@ export default function DoctorConsultationsPage() {
 				<div className="rounded-2xl border border-blue-200 bg-blue-50 p-5 shadow-sm">
 					<p className="text-sm font-medium text-blue-700">Upcoming</p>
 					<p className="mt-2 text-2xl font-bold text-blue-900">
-						{appointments.filter((a) => a.status === "scheduled").length}
+						{appointments.filter((a) => a.status === "confirmed").length}
 					</p>
 				</div>
 				<div className="rounded-2xl border border-emerald-200 bg-emerald-50 p-5 shadow-sm">
@@ -117,25 +134,25 @@ export default function DoctorConsultationsPage() {
 													<h4 className="font-semibold text-slate-900">{consult.patientName || "Unknown Patient"}</h4>
 													<p className="text-xs text-slate-500 mt-0.5">
 														<span className="font-medium text-slate-700">Date:</span> {" "}
-														{consult.appointmentDate ? format(parseISO(consult.appointmentDate), "MMM dd, yyyy") : "N/A"} at {consult.appointmentTime}
+														{consult.appointmentDate ? format(parseISO(consult.appointmentDate), "MMM dd, yyyy") : "N/A"} at {consult.slotTime}
 													</p>
-													{consult.symptoms && consult.symptoms.length > 0 && (
+													{consult.reason && (
 														<p className="mt-1 text-xs text-slate-500 truncate max-w-xs">
-															<span className="font-medium text-slate-600">Symptoms:</span> {consult.symptoms.join(", ")}
+															<span className="font-medium text-slate-600">Reason:</span> {consult.reason}
 														</p>
 													)}
 												</div>
 											</div>
 											<div className="flex items-center gap-3 w-full sm:w-auto justify-end border-t border-slate-100 pt-3 sm:border-0 sm:pt-0">
 												<span className={`rounded-full px-2.5 py-1 text-[11px] font-medium tracking-wide ${
-													consult.status === "scheduled" ? "bg-blue-100 text-blue-700" :
+													consult.status === "confirmed" ? "bg-blue-100 text-blue-700" :
 													consult.status === "completed" ? "bg-emerald-100 text-emerald-700" :
 													consult.status === "cancelled" ? "bg-red-100 text-red-700" :
 													"bg-slate-100 text-slate-700"
 												}`}>
 													{consult.status ? consult.status.toUpperCase() : "UNKNOWN"}
 												</span>
-												{consult.type === "telemedicine" && (
+												{consult.mode === "online" && (
 													<span className="rounded-full bg-purple-100 px-2.5 py-1 text-[11px] font-medium text-purple-700">
 														VIDEO
 													</span>
@@ -183,32 +200,28 @@ export default function DoctorConsultationsPage() {
 										</div>
 										<div className="flex justify-between py-1 border-b border-slate-200/60">
 											<span className="text-slate-500 text-xs">Time</span>
-											<span className="font-medium text-slate-900 text-xs">{selectedConsultation.appointmentTime || "N/A"}</span>
+											<span className="font-medium text-slate-900 text-xs">{selectedConsultation.slotTime || "N/A"}</span>
 										</div>
 										<div className="flex justify-between py-1">
 											<span className="text-slate-500 text-xs">Type</span>
-											<span className="font-medium text-slate-900 text-xs capitalize">{selectedConsultation.type || "In-person"}</span>
+											<span className="font-medium text-slate-900 text-xs capitalize">{selectedConsultation.mode || "In-person"}</span>
 										</div>
 									</div>
 
 									<div className="rounded-xl border border-blue-100 bg-blue-50/50 p-3 text-sm">
-										<p className="text-xs font-semibold uppercase tracking-wide text-blue-800 mb-2">Notes & Symptoms</p>
-										{selectedConsultation.symptoms && selectedConsultation.symptoms.length > 0 ? (
-											<div className="flex flex-wrap gap-1.5">
-												{selectedConsultation.symptoms.map(sym => (
-													<span key={sym} className="inline-flex rounded-md bg-white border border-blue-200 px-2 py-0.5 text-[10px] font-medium text-blue-700">
-														{sym}
-													</span>
-												))}
+										<p className="text-xs font-semibold uppercase tracking-wide text-blue-800 mb-2">Notes & Reason</p>
+										{selectedConsultation.reason ? (
+											<div className="text-xs text-slate-700 whitespace-pre-wrap">
+												{selectedConsultation.reason}
 											</div>
 										) : (
-											<p className="text-xs text-slate-500 italic">No symptoms detailed.</p>
+											<p className="text-xs text-slate-500 italic">No reason detailed.</p>
 										)}
 									</div>
 								</div>
 
 								<div className="mt-6 pt-5 border-t border-slate-100 space-y-2">
-									{selectedConsultation.status === "scheduled" && selectedConsultation.type === "telemedicine" && (
+									{selectedConsultation.status === "confirmed" && selectedConsultation.mode === "online" && (
 										<button className="w-full rounded-xl bg-blue-600 px-4 py-2.5 text-sm font-semibold text-white shadow-sm hover:bg-blue-700 transition flex justify-center items-center gap-2">
 											<svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
 												<path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z" />
@@ -219,9 +232,14 @@ export default function DoctorConsultationsPage() {
 									<button className="w-full rounded-xl border border-slate-300 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 shadow-sm hover:bg-slate-50 hover:text-slate-900 transition">
 										Issue Digital Prescription
 									</button>
-									<button className="w-full rounded-xl bg-slate-100 px-4 py-2 text-xs font-medium text-slate-600 hover:bg-slate-200 transition">
-										Mark as Completed
-									</button>
+									{selectedConsultation.status === "confirmed" && (
+										<button 
+											onClick={() => handleComplete(selectedConsultation._id)}
+											className="w-full rounded-xl bg-slate-100 px-4 py-2 text-xs font-medium text-slate-600 hover:bg-slate-200 transition"
+										>
+											Mark as Completed
+										</button>
+									)}
 								</div>
 							</>
 						) : (
