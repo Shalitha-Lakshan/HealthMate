@@ -1,0 +1,133 @@
+version: '3.8'
+
+services:
+  gateway:
+    build: backend/gateway
+    ports:
+      - "5000:5000"
+    env_file:
+      - ./backend/gateway/.env
+    dns:
+      - 8.8.8.8
+    volumes:
+      - ./backend/gateway:/app
+      - /app/node_modules
+
+  auth-service:
+    build: backend/services/auth-service
+    ports:
+      - "5001:5001"
+    env_file:
+      - ./backend/services/auth-service/.env
+    dns:
+      - 8.8.8.8
+    volumes:
+      - ./backend/services/auth-service:/app
+      - /app/node_modules
+
+  patient-service:
+    build: backend/services/patient-service
+    ports:
+      - "5002:5002"
+    env_file:
+      - ./backend/services/patient-service/.env
+    dns:
+      - 8.8.8.8
+    volumes:
+      - ./backend/services/patient-service:/app
+      - /app/node_modules
+
+  doctor-service:
+    build: backend/services/doctor-service
+    ports:
+      - "5003:5003"
+    env_file:
+      - ./backend/services/doctor-service/.env
+    dns:
+      - 8.8.8.8
+    volumes:
+      - ./backend/services/doctor-service:/app
+      - /app/node_modules
+
+  appointment-service:
+    build: backend/services/appointment-service
+    ports:
+      - "5004:5004"
+    env_file:
+      - ./backend/services/appointment-service/.env
+    dns:
+      - 8.8.8.8
+    volumes:
+      - ./backend/services/appointment-service:/app
+      - /app/node_modules
+
+  payment-service:
+    build: backend/services/payment-service
+    ports:
+      - "5005:5005"
+    env_file:
+      - ./backend/services/payment-service/.env
+    dns:
+      - 8.8.8.8
+    volumes:
+      - ./backend/services/payment-service:/app
+      - /app/node_modules
+
+  notification-service:
+    build: backend/services/notification-service
+    ports:
+      - "5006:5006"
+    env_file:
+      - ./backend/services/notification-service/.env
+    dns:
+      - 8.8.8.8
+    volumes:
+      - ./backend/services/notification-service:/app
+      - /app/node_modules
+
+  telemedicine-service:
+    build: backend/services/telemedicine-service
+    ports:
+      - "5007:5007"
+    env_file:
+      - ./backend/services/telemedicine-service/.env
+    dns:
+      - 8.8.8.8
+    volumes:
+      - ./backend/services/telemedicine-service:/app
+      - /app/node_modules
+
+  admin-service:
+    build: backend/services/admin-service
+    ports:
+      - "5009:5009"
+    env_file:
+      - ./backend/services/admin-service/.env
+    dns:
+      - 8.8.8.8
+    volumes:
+      - ./backend/services/admin-service:/app
+      - /app/node_modules
+
+  ai-service:
+    build: backend/services/ai-service
+    ports:
+      - "5010:5010"
+    dns:
+      - 8.8.8.8
+    volumes:
+      - ./backend/services/ai-service:/app
+      - /app/node_modules
+
+  frontend:
+    build: frontend
+    ports:
+      - "5173:5173"
+    environment:
+      - VITE_APPOINTMENT_API_URL=http://localhost:5004/api/appointments
+      - CHOKIDAR_USEPOLLING=true
+    dns:
+      - 8.8.8.8
+    volumes:
+      - ./frontend:/app
+      - /app/node_modules
