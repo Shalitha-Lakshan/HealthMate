@@ -8,6 +8,9 @@ export const getDoctorAvailability = async (doctorId, token) => {
 	});
 
 	if (!response.ok) {
+		if (response.status === 404) {
+			return null;
+		}
 		const errorData = await response.json();
 		throw new Error(errorData.message || "Failed to fetch doctor availability");
 	}

@@ -80,14 +80,82 @@ function DoctorSchedulePage() {
 		timeOptions.push(`${hour.toString().padStart(2, '0')}:30 ${ampm}`);
 	}
 
-	const scheduleData = appointments.map((app) => ({
-		id: app._id || app.id,
-		patient: app.patientName,
-		time: `${app.appointmentDate} ${app.slotTime}`,
-		type: app.mode || "Consultation",
-		status: app.status,
-		raw: app
-	}));
+	const today = new Date();
+	const yyyy = today.getFullYear();
+	const mm = String(today.getMonth() + 1).padStart(2, '0');
+	const dd = String(today.getDate()).padStart(2, '0');
+	const selectedYyyy = selectedDate.getFullYear();
+	const selectedMm = String(selectedDate.getMonth() + 1).padStart(2, '0');
+	const selectedDd = String(selectedDate.getDate()).padStart(2, '0');
+	const selectedDateStr = `${selectedYyyy}-${selectedMm}-${selectedDd}`;
+
+	const toDateKey = (dateValue) => {
+		if (!dateValue) {
+			return "";
+		}
+		if (typeof dateValue === "string") {
+			const dateMatch = dateValue.match(/^(\d{4}-\d{2}-\d{2})/);
+			if (dateMatch) {
+				return dateMatch[1];
+			}
+		}
+		const parsed = new Date(dateValue);
+		if (Number.isNaN(parsed.getTime())) {
+			return "";
+		}
+		const year = parsed.getFullYear();
+		const month = String(parsed.getMonth() + 1).padStart(2, "0");
+		const day = String(parsed.getDate()).padStart(2, "0");
+		return `${year}-${month}-${day}`;
+	};
+
+	const getStatusMeta = (statusValue) => {
+		const statusKey = (statusValue || "").toLowerCase();
+		switch (statusKey) {
+			case "confirmed":
+				return { label: "Confirmed", className: "bg-green-100 text-green-700" };
+			case "pending":
+				return { label: "Pending", className: "bg-blue-100 text-blue-700" };
+			case "pending_payment":
+				return { label: "Pending Payment", className: "bg-amber-100 text-amber-700" };
+			case "completed":
+				return { label: "Completed", className: "bg-slate-100 text-slate-700" };
+			case "cancelled":
+				return { label: "Cancelled", className: "bg-rose-100 text-rose-700" };
+			case "rejected":
+				return { label: "Rejected", className: "bg-rose-100 text-rose-700" };
+			case "payment_failed":
+				return { label: "Payment Failed", className: "bg-amber-100 text-amber-700" };
+			case "expired":
+				return { label: "Expired", className: "bg-slate-100 text-slate-600" };
+			default:
+				return {
+					label: statusValue ? statusValue : "Scheduled",
+					className: "bg-purple-100 text-purple-700",
+				};
+		}
+	};
+
+	const scheduleData = appointments
+		.filter((app) => {
+			const dateKey = toDateKey(app.appointmentDate || app.appointmentDateTime);
+			return dateKey === selectedDateStr;
+		})
+		.map((app) => {
+			const patientName = app.patientName || app.patient?.name || "Patient";
+			const statusMeta = getStatusMeta(app.status);
+			const appointmentDate = toDateKey(app.appointmentDate || app.appointmentDateTime) || selectedDateStr;
+			return {
+				id: app._id || app.id,
+				patient: patientName,
+				patientInitial: patientName.charAt(0).toUpperCase(),
+				time: app.slotTime ? `${appointmentDate} ${app.slotTime}` : appointmentDate,
+				type: app.mode || "Consultation",
+				statusLabel: statusMeta.label,
+				statusClassName: statusMeta.className,
+				raw: app,
+			};
+		});
 
 	// Calculate Daily Summary logic
 	const totalSlots = availability.length > 0 ? availability.length * 8 : 16; // Simple estimation based on hours 
@@ -112,7 +180,7 @@ function DoctorSchedulePage() {
 							: "text-slate-500 hover:text-slate-700"
 					}`}
 				>
-					Today's Appointments
+					Daily Schedule
 				</button>
 				<button
 					onClick={() => setActiveTab("availability")}
@@ -130,7 +198,7 @@ function DoctorSchedulePage() {
 				<div className="grid gap-6 lg:grid-cols-[1fr_300px]">
 					<div className="rounded-2xl border border-slate-200 bg-white shadow-sm">
 						<div className="border-b border-slate-200 p-5">
-							<h3 className="font-semibold text-slate-900">Upcoming Appointments</h3>
+							<h3 className="font-semibold text-slate-900">Appointments for {selectedDate.toLocaleDateString()}</h3>
 						</div>
 						<div className="divide-y divide-slate-100">
 							{scheduleData.length > 0 ? (
@@ -138,7 +206,7 @@ function DoctorSchedulePage() {
 									<div key={slot.id} className="flex flex-col gap-3 p-5 sm:flex-row sm:items-center sm:justify-between">
 										<div className="flex items-start gap-4">
 											<div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-blue-50 text-blue-600 font-bold">
-												{slot.patient.charAt(0)}
+												{slot.patientInitial}
 											</div>
 											<div>
 												<p className="font-semibold text-slate-900">{slot.patient}</p>
@@ -157,13 +225,8 @@ function DoctorSchedulePage() {
 											</div>
 										</div>
 										<div className="flex items-center gap-3 mt-3 sm:mt-0">
-											<span className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-semibold ${
-												slot.status === 'Confirmed' ? 'bg-green-100 text-green-700' :
-												slot.status === 'Waiting' ? 'bg-blue-100 text-blue-700' :
-												slot.status === 'Scheduled' ? 'bg-purple-100 text-purple-700' :
-												'bg-amber-100 text-amber-700'
-											}`}>
-												{slot.status}
+											<span className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-semibold ${slot.statusClassName}`}>
+												{slot.statusLabel}
 											</span>
 											<button 
 												onClick={() => setSelectedAppointment(slot.raw)}
@@ -175,7 +238,7 @@ function DoctorSchedulePage() {
 									</div>
 								))
 							) : (
-								<div className="p-5 text-center text-sm text-slate-500">No appointments scheduled for today.</div>
+								<div className="p-5 text-center text-sm text-slate-500">No appointments scheduled for this date.</div>
 							)}
 						</div>
 					</div>
