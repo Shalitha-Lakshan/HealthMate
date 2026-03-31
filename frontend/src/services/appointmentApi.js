@@ -20,6 +20,11 @@ export const fetchMyAppointments = async () => {
 	return response.data;
 };
 
+export const fetchDoctorAppointments = async (doctorId) => {
+	const response = await appointmentApi.get(`/doctor/${doctorId}`);
+	return response.data;
+};
+
 export const fetchAvailableSlots = async ({ doctorId, date }) => {
 	const response = await appointmentApi.get("/slots", {
 		params: { doctorId, date },
@@ -34,6 +39,11 @@ export const createAppointmentHold = async (payload) => {
 
 export const confirmAppointmentPayment = async (appointmentId, payload) => {
 	const response = await appointmentApi.patch(`/${appointmentId}/pay`, payload);
+	return response.data;
+};
+
+export const completeConsultation = async (appointmentId) => {
+	const response = await appointmentApi.patch(`/${appointmentId}/complete`);
 	return response.data;
 };
 

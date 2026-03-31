@@ -333,7 +333,14 @@ const createAppointmentHold = async (req, res) => {
 const getMyAppointments = async (req, res) => {
 	try {
 		await releaseExpiredPendingPayments();
-		const appointments = await Appointment.find({ patientId: req.user.sub }).sort({ appointmentDateTime: 1 });
+		const patientId = req.user.sub;
+		const query = {
+			$or: [
+				{ patientId },
+				{ $expr: { $eq: [{ $toString: "$patientId" }, patientId] } }
+			]
+		};
+		const appointments = await Appointment.find(query).sort({ appointmentDateTime: 1 });
 		return res.status(200).json({ appointments });
 	} catch (error) {
 		return res.status(500).json({ message: "failed to fetch appointments", error: error.message });
@@ -343,7 +350,14 @@ const getMyAppointments = async (req, res) => {
 const getDoctorAppointments = async (req, res) => {
 	try {
 		await releaseExpiredPendingPayments();
-		const appointments = await Appointment.find({ doctorId: req.user.sub }).sort({ appointmentDateTime: 1 });
+		const { doctorId } = req.params;
+		const query = {
+			$or: [
+				{ doctorId },
+				{ $expr: { $eq: [{ $toString: "$doctorId" }, doctorId] } }
+			]
+		};
+		const appointments = await Appointment.find(query).sort({ appointmentDateTime: 1 });
 		return res.status(200).json({ appointments });
 	} catch (error) {
 		return res.status(500).json({ message: "failed to fetch doctor appointments", error: error.message });

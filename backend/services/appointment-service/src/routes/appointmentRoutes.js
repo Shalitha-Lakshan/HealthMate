@@ -28,7 +28,7 @@ router.patch("/admin/:id/complete", authorizeRoles("admin"), completeConsultatio
 router.delete("/admin/:id", authorizeRoles("admin"), deleteAppointmentAdmin);
 
 router.get("/my", authorizeRoles("patient"), getMyAppointments);
-router.get("/doctor", authorizeRoles("doctor"), getDoctorAppointments);
+router.get("/doctor/:doctorId", authorizeRoles("doctor"), getDoctorAppointments);
 router.get("/slots", authorizeRoles("patient"), getAvailableSlots);
 router.post("/hold", authorizeRoles("patient"), createAppointmentHold);
 router.post("/", authorizeRoles("patient"), createAppointmentHold);
