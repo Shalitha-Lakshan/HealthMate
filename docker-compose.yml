@@ -31,6 +31,9 @@ services:
       context: ./backend/services/appointment-service
     env_file:
       - ./backend/services/appointment-service/.env
+    environment:
+      - AUTH_SERVICE_URL=http://auth-service:5001/api/auth
+      - NOTIFICATION_SERVICE_URL=http://notification-service:5006/api/notifications
     ports:
       - "5004:5004"
     restart: unless-stopped
@@ -40,6 +43,8 @@ services:
       context: ./backend/services/payment-service
     env_file:
       - ./backend/services/payment-service/.env
+    environment:
+      - APPOINTMENT_SERVICE_URL=http://appointment-service:5004/api/appointments
     ports:
       - "5005:5005"
     restart: unless-stopped
@@ -83,6 +88,15 @@ services:
       context: ./backend/gateway
     env_file:
       - ./backend/gateway/.env
+    environment:
+      - AUTH_SERVICE_URL=http://auth-service:5001
+      - PATIENT_SERVICE_URL=http://patient-service:5002
+      - DOCTOR_SERVICE_URL=http://doctor-service:5003
+      - APPOINTMENT_SERVICE_URL=http://appointment-service:5004
+      - PAYMENT_SERVICE_URL=http://payment-service:5005
+      - NOTIFICATION_SERVICE_URL=http://notification-service:5006
+      - TELEMEDICINE_SERVICE_URL=http://telemedicine-service:5007
+      - ADMIN_SERVICE_URL=http://admin-service:5009
     ports:
       - "5000:5000"
     depends_on:
