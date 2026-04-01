@@ -33,6 +33,8 @@ services:
       - ./backend/services/appointment-service/.env
     environment:
       - AUTH_SERVICE_URL=http://auth-service:5001/api/auth
+      - DOCTOR_SERVICE_URL=http://doctor-service:5003/api/doctors
+      - DOCTOR_INTERNAL_TOKEN=healthmate-internal-token
       - NOTIFICATION_SERVICE_URL=http://notification-service:5006/api/notifications
     ports:
       - "5004:5004"
