@@ -75,13 +75,13 @@ function RegisterPage() {
 	return (
 		<AuthLayout
 			title="Create account"
-			subtitle="Register as a patient or doctor to access HealthMate"
+			subtitle="Register as a patient or doctor to access secure clinical services."
 			footerText="Already have an account?"
 			footerLink="/login"
 			footerLinkText="Sign in"
 		>
-			<form className="space-y-4" onSubmit={handleSubmit}>
-				<div className="rounded-xl border border-blue-100 bg-blue-50 px-3 py-2 text-xs font-medium text-blue-800">
+			<form className="space-y-5" onSubmit={handleSubmit}>
+				<div className="rounded-2xl border border-blue-100 bg-blue-50 px-4 py-3 text-xs font-semibold text-blue-800">
 					Account Setup • Step 1 of 1
 				</div>
 
@@ -97,7 +97,7 @@ function RegisterPage() {
 						value={formData.name}
 						onChange={handleChange}
 						placeholder="John Perera"
-						className="w-full rounded-xl border border-slate-300 px-4 py-2.5 text-sm outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+						className="w-full rounded-xl border border-slate-300 bg-white px-4 py-2.5 text-sm text-slate-900 outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
 					/>
 				</div>
 
@@ -113,7 +113,7 @@ function RegisterPage() {
 						value={formData.email}
 						onChange={handleChange}
 						placeholder="you@example.com"
-						className="w-full rounded-xl border border-slate-300 px-4 py-2.5 text-sm outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+						className="w-full rounded-xl border border-slate-300 bg-white px-4 py-2.5 text-sm text-slate-900 outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
 					/>
 				</div>
 
@@ -129,7 +129,7 @@ function RegisterPage() {
 						value={formData.phoneNumber}
 						onChange={handleChange}
 						placeholder="0771234567 or +94771234567"
-						className="w-full rounded-xl border border-slate-300 px-4 py-2.5 text-sm outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+						className="w-full rounded-xl border border-slate-300 bg-white px-4 py-2.5 text-sm text-slate-900 outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
 					/>
 				</div>
 
@@ -142,7 +142,7 @@ function RegisterPage() {
 						name="role"
 						value={formData.role}
 						onChange={handleChange}
-						className="w-full rounded-xl border border-slate-300 px-4 py-2.5 text-sm outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+						className="w-full rounded-xl border border-slate-300 bg-white px-4 py-2.5 text-sm text-slate-900 outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
 					>
 						<option value="patient">Patient</option>
 						<option value="doctor">Doctor</option>
@@ -168,7 +168,7 @@ function RegisterPage() {
 								required={formData.role === "doctor"}
 								value={formData.specialization}
 								onChange={handleChange}
-								className="w-full rounded-xl border border-slate-300 px-4 py-2.5 text-sm outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+								className="w-full rounded-xl border border-slate-300 bg-white px-4 py-2.5 text-sm text-slate-900 outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
 							>
 								<option value="">Select specialization</option>
 								{DOCTOR_SPECIALIZATIONS.map((specialization) => (
@@ -194,7 +194,7 @@ function RegisterPage() {
 								value={formData.slmcRegistrationNumber}
 								onChange={handleChange}
 								placeholder="SLMC/12345"
-								className="w-full rounded-xl border border-slate-300 px-4 py-2.5 text-sm outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+								className="w-full rounded-xl border border-slate-300 bg-white px-4 py-2.5 text-sm text-slate-900 outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
 							/>
 						</div>
 
@@ -215,7 +215,7 @@ function RegisterPage() {
 								value={formData.yearsOfExperience}
 								onChange={handleChange}
 								placeholder="8"
-								className="w-full rounded-xl border border-slate-300 px-4 py-2.5 text-sm outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+								className="w-full rounded-xl border border-slate-300 bg-white px-4 py-2.5 text-sm text-slate-900 outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
 							/>
 						</div>
 					</div>
@@ -234,7 +234,7 @@ function RegisterPage() {
 						value={formData.password}
 						onChange={handleChange}
 						placeholder="Minimum 6 characters"
-						className="w-full rounded-xl border border-slate-300 px-4 py-2.5 text-sm outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+						className="w-full rounded-xl border border-slate-300 bg-white px-4 py-2.5 text-sm text-slate-900 outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
 					/>
 				</div>
 
@@ -251,9 +251,13 @@ function RegisterPage() {
 						value={formData.confirmPassword}
 						onChange={handleChange}
 						placeholder="Re-enter password"
-						className="w-full rounded-xl border border-slate-300 px-4 py-2.5 text-sm outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+						className="w-full rounded-xl border border-slate-300 bg-white px-4 py-2.5 text-sm text-slate-900 outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
 					/>
 				</div>
+
+				<p className="text-xs text-slate-500">
+					Doctors require verification approval before they can access consultations.
+				</p>
 
 				{errorMessage && (
 					<p className="rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
@@ -270,7 +274,7 @@ function RegisterPage() {
 				<button
 					type="submit"
 					disabled={isLoading || Boolean(successMessage)}
-					className="w-full rounded-xl bg-blue-600 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:bg-blue-300"
+					className="w-full rounded-xl bg-blue-600 px-4 py-3 text-sm font-semibold text-white shadow-md shadow-blue-200 transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:bg-blue-300"
 				>
 					{isLoading ? "Creating account..." : successMessage ? "Redirecting..." : "Create Account"}
 				</button>
