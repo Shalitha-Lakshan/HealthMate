@@ -6,13 +6,13 @@ const SLOT_START_HOUR = 9;
 const SLOT_END_HOUR = 17;
 const PAYMENT_HOLD_MINUTES = Number(process.env.APPOINTMENT_PAYMENT_HOLD_MINUTES || 10);
 const DEFAULT_CONSULTATION_FEE = Number(process.env.DEFAULT_CONSULTATION_FEE || 3500);
-const APPOINTMENT_INTERNAL_TOKEN = process.env.APPOINTMENT_INTERNAL_TOKEN || "healthmate-internal-token";
+const APPOINTMENT_INTERNAL_TOKEN = process.env.APPOINTMENT_INTERNAL_TOKEN;
 const AUTH_SERVICE_URL = process.env.AUTH_SERVICE_URL || "http://localhost:5001/api/auth";
-const AUTH_INTERNAL_TOKEN = process.env.AUTH_INTERNAL_TOKEN || "healthmate-internal-token";
+const AUTH_INTERNAL_TOKEN = process.env.AUTH_INTERNAL_TOKEN;
 const DOCTOR_SERVICE_URL = process.env.DOCTOR_SERVICE_URL || "http://localhost:5003/api/doctors";
-const DOCTOR_INTERNAL_TOKEN = process.env.DOCTOR_INTERNAL_TOKEN || "healthmate-internal-token";
+const DOCTOR_INTERNAL_TOKEN = process.env.DOCTOR_INTERNAL_TOKEN;
 const NOTIFICATION_SERVICE_URL = process.env.NOTIFICATION_SERVICE_URL || "http://localhost:5006/api/notifications";
-const NOTIFICATION_INTERNAL_TOKEN = process.env.NOTIFICATION_INTERNAL_TOKEN || "healthmate-internal-token";
+const NOTIFICATION_INTERNAL_TOKEN = process.env.NOTIFICATION_INTERNAL_TOKEN;
 
 const normalizeDateOnly = (dateValue) => {
 	const date = new Date(dateValue);
@@ -130,6 +130,27 @@ const fetchDoctorAvailabilityForDate = async ({ doctorId, date }) => {
 	} catch (_error) {
 		return { ok: false, message: "unable to fetch doctor availability" };
 	}
+};
+
+const ensureSlotIsWithinDoctorAvailability = async ({ doctorId, date, slotTime }) => {
+	const availabilityResult = await fetchDoctorAvailabilityForDate({ doctorId, date });
+	if (!availabilityResult.ok) {
+		return {
+			ok: false,
+			statusCode: 502,
+			message: availabilityResult.message,
+		};
+	}
+
+	if (!availabilityResult.slots.includes(slotTime)) {
+		return {
+			ok: false,
+			statusCode: 400,
+			message: "selected slot is outside doctor availability",
+		};
+	}
+
+	return { ok: true };
 };
 
 const releaseExpiredPendingPayments = async () => {
@@ -409,6 +430,16 @@ const createAppointmentHold = async (req, res) => {
 
 		if (parsedDate <= new Date()) {
 			return res.status(400).json({ message: "appointment date and time must be in the future" });
+		}
+
+		const availabilityCheck = await ensureSlotIsWithinDoctorAvailability({
+			doctorId,
+			date: normalizedDate,
+			slotTime,
+		});
+
+		if (!availabilityCheck.ok) {
+			return res.status(availabilityCheck.statusCode).json({ message: availabilityCheck.message });
 		}
 
 		const conflictingAppointment = await Appointment.findOne({
@@ -692,6 +723,16 @@ const rescheduleAppointment = async (req, res) => {
 
 		if (parsedDate <= new Date()) {
 			return res.status(400).json({ message: "appointment date and time must be in the future" });
+		}
+
+		const availabilityCheck = await ensureSlotIsWithinDoctorAvailability({
+			doctorId: appointment.doctorId,
+			date: normalizedDate,
+			slotTime,
+		});
+
+		if (!availabilityCheck.ok) {
+			return res.status(availabilityCheck.statusCode).json({ message: availabilityCheck.message });
 		}
 
 		const conflict = await Appointment.findOne({

@@ -1,7 +1,7 @@
 const Prescription = require("../models/Prescription");
 
 const APPOINTMENT_SERVICE_URL = process.env.APPOINTMENT_SERVICE_URL || "http://localhost:5004/api/appointments";
-const APPOINTMENT_INTERNAL_TOKEN = process.env.APPOINTMENT_INTERNAL_TOKEN || "healthmate-internal-token";
+const APPOINTMENT_INTERNAL_TOKEN = process.env.APPOINTMENT_INTERNAL_TOKEN;
 
 const parseMedications = (medications) => {
 	if (Array.isArray(medications)) {

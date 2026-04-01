@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { getCurrentUserId, getStoredUser } from "../utils/auth";
+import { getCurrentUserId } from "../utils/auth";
 import { fetchDoctorAppointments } from "../services/appointmentApi";
 import { getDoctorAvailability, updateDoctorAvailability } from "../services/doctorApi";
 import Calendar from "react-calendar";
@@ -70,16 +70,19 @@ function DoctorSchedulePage() {
 	const [saving, setSaving] = useState(false);
 	const [selectedAppointment, setSelectedAppointment] = useState(null);
 	const [feedback, setFeedback] = useState({ type: "", message: "" });
-	
-	const user = getStoredUser() || {};
+
 	const doctorId = getCurrentUserId();
 	const token = localStorage.getItem("healthmate_token");
 
 	useEffect(() => {
 		const loadData = async () => {
-			if (!doctorId) return;
+			if (!doctorId) {
+				setFeedback({ type: "error", message: "Doctor session not found. Please sign in again." });
+				return;
+			}
 			setLoading(true);
 			try {
+				setFeedback({ type: "", message: "" });
 				if (activeTab === "calendar") {
 					const data = await fetchDoctorAppointments(doctorId);
 					setAppointments(data.appointments || []);
@@ -89,6 +92,13 @@ function DoctorSchedulePage() {
 				}
 			} catch (err) {
 				console.error("Failed to load data", err);
+				setFeedback({
+					type: "error",
+					message:
+						activeTab === "availability"
+							? "Failed to load availability settings."
+							: "Failed to load schedule appointments.",
+				});
 			} finally {
 				setLoading(false);
 			}
@@ -109,7 +119,7 @@ function DoctorSchedulePage() {
 			setFeedback({ type: "success", message: "Availability saved successfully." });
 		} catch (err) {
 			console.error("Failed to save availability", err);
-			setFeedback({ type: "error", message: "Failed to save availability." });
+			setFeedback({ type: "error", message: err?.message || "Failed to save availability." });
 		} finally {
 			setSaving(false);
 		}

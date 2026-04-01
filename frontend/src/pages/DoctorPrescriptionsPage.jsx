@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import jsPDF from "jspdf";
 import {
 	createPrescription,
 	fetchDoctorPrescriptions,
@@ -21,19 +22,20 @@ function DoctorPrescriptionsPage() {
 	const [saving, setSaving] = useState(false);
 	const [feedback, setFeedback] = useState({ type: "", message: "" });
 	const [form, setForm] = useState({
-		patientName:
-			selectedConsultation?.patientName ||
-			selectedConsultation?.patient?.name ||
-			"",
-		patientId:
-			selectedConsultation?.patientId ||
-			selectedConsultation?.patient?._id ||
-			selectedConsultation?.patient?.id ||
-			"",
 		diagnosis: "",
 		medicines: "",
 		instructions: "",
 	});
+
+	const linkedPatientName =
+		selectedConsultation?.patientName ||
+		selectedConsultation?.patient?.name ||
+		"Unknown Patient";
+	const linkedPatientId =
+		selectedConsultation?.patientId ||
+		selectedConsultation?.patient?._id ||
+		selectedConsultation?.patient?.id ||
+		"N/A";
 
 	const doctorId = useMemo(() => getCurrentUserId(), []);
 
@@ -142,6 +144,68 @@ function DoctorPrescriptionsPage() {
 		return "";
 	};
 
+	const getMedicationNames = (medications) => {
+		if (typeof medications === "string") {
+			return medications
+				.split(/\n|,/)
+				.map((entry) => entry.trim())
+				.filter(Boolean);
+		}
+
+		if (Array.isArray(medications)) {
+			return medications
+				.map((entry) => String(entry?.name || "").trim())
+				.filter(Boolean);
+		}
+
+		return [];
+	};
+
+	const handleExportPrescription = (item) => {
+		try {
+			const doc = new jsPDF();
+			const lineHeight = 8;
+			let y = 18;
+
+			const writeWrappedLine = (label, value) => {
+				const safeValue = String(value || "-");
+				const text = `${label}: ${safeValue}`;
+				const wrapped = doc.splitTextToSize(text, 180);
+				doc.text(wrapped, 14, y);
+				y += wrapped.length * lineHeight;
+			};
+
+			doc.setFontSize(16);
+			doc.text("HealthMate Prescription", 14, y);
+			y += 12;
+
+			doc.setFontSize(11);
+			writeWrappedLine("Prescription ID", item.prescriptionId || item._id || "-");
+			writeWrappedLine("Status", String(item.status || "draft").toUpperCase());
+			writeWrappedLine("Patient", item.patientName || "-");
+			writeWrappedLine("Doctor", item.doctorName || "-");
+			writeWrappedLine("Appointment ID", item.appointmentId || "-");
+			writeWrappedLine(
+				"Created At",
+				item.createdAt ? new Date(item.createdAt).toLocaleString() : "-"
+			);
+
+			y += 2;
+			writeWrappedLine("Diagnosis", item.diagnosis || "-");
+
+			const medicineNames = getMedicationNames(item.medications);
+			writeWrappedLine("Medicines", medicineNames.length > 0 ? medicineNames.join(", ") : "-");
+			writeWrappedLine("Instructions", item.notes || "-");
+
+			const fileToken = String(item.prescriptionId || item._id || Date.now()).replace(/[^a-zA-Z0-9_-]/g, "");
+			doc.save(`prescription-${fileToken}.pdf`);
+			setFeedback({ type: "success", message: "Prescription exported as PDF." });
+		} catch (error) {
+			console.error("Failed to export prescription:", error);
+			setFeedback({ type: "error", message: "Failed to export prescription." });
+		}
+	};
+
 	return (
 		<div className="space-y-6">
 			{feedback.message && (
@@ -181,18 +245,11 @@ function DoctorPrescriptionsPage() {
 				<section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
 					<h3 className="text-base font-semibold text-slate-900">Create Prescription Draft</h3>
 					<div className="mt-4 grid gap-3">
-						<input
-							value={form.patientName}
-							onChange={(e) => handleChange("patientName", e.target.value)}
-							className="rounded-xl border border-slate-300 px-3 py-2 text-sm"
-							placeholder="Patient name"
-						/>
-						<input
-							value={form.patientId}
-							onChange={(e) => handleChange("patientId", e.target.value)}
-							className="rounded-xl border border-slate-300 px-3 py-2 text-sm"
-							placeholder="Patient ID"
-						/>
+						<div className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-sm">
+							<p className="font-medium text-slate-700">Linked patient: {linkedPatientName}</p>
+							<p className="mt-1 text-xs text-slate-500">Patient ID: {linkedPatientId}</p>
+							<p className="mt-1 text-xs text-slate-500">Consultation ID: {selectedConsultation?._id || "Not selected"}</p>
+						</div>
 						<input
 							value={form.diagnosis}
 							onChange={(e) => handleChange("diagnosis", e.target.value)}
@@ -214,10 +271,10 @@ function DoctorPrescriptionsPage() {
 						<button
 							type="button"
 							onClick={handleCreateDraft}
-							disabled={saving}
+							disabled={saving || !selectedConsultation?._id}
 							className="rounded-xl bg-blue-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-blue-700"
 						>
-							{saving ? "Saving..." : "Save Draft"}
+							{saving ? "Saving..." : !selectedConsultation?._id ? "Select Consultation First" : "Save Draft"}
 						</button>
 					</div>
 				</section>
@@ -237,16 +294,30 @@ function DoctorPrescriptionsPage() {
 							prescriptions.map((item) => (
 								<div key={item._id} className="rounded-xl border border-slate-200 bg-slate-50 p-4">
 									<div className="flex items-center justify-between gap-2">
-										<p className="text-sm font-semibold text-slate-900">{item.patientName}</p>
-										<span
-											className={`rounded-full px-2 py-1 text-[11px] font-semibold ${
-												item.status === "finalized"
-													? "bg-emerald-100 text-emerald-700"
-													: "bg-amber-100 text-amber-700"
-											}`}
-										>
-											{item.status.toUpperCase()}
-										</span>
+											<div>
+												<p className="text-sm font-semibold text-slate-900">{item.patientName}</p>
+												<p className="mt-1 text-[11px] text-slate-500">
+													Rx: {item.prescriptionId || item._id?.slice(-6) || "-"}
+												</p>
+											</div>
+											<div className="flex items-center gap-2">
+												<span
+													className={`rounded-full px-2 py-1 text-[11px] font-semibold ${
+														item.status === "finalized"
+															? "bg-emerald-100 text-emerald-700"
+															: "bg-amber-100 text-amber-700"
+													}`}
+												>
+													{item.status.toUpperCase()}
+												</span>
+												<button
+													type="button"
+													onClick={() => handleExportPrescription(item)}
+													className="rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-100"
+												>
+													Export PDF
+												</button>
+											</div>
 									</div>
 									{item.status === "draft" ? (
 										<div className="mt-3 space-y-2">

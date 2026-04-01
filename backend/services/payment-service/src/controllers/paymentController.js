@@ -3,7 +3,7 @@ const Stripe = require("stripe");
 
 const APPOINTMENT_SERVICE_URL =
 	process.env.APPOINTMENT_SERVICE_URL || "http://localhost:5004/api/appointments";
-const APPOINTMENT_INTERNAL_TOKEN = process.env.APPOINTMENT_INTERNAL_TOKEN || "healthmate-internal-token";
+const APPOINTMENT_INTERNAL_TOKEN = process.env.APPOINTMENT_INTERNAL_TOKEN;
 const STRIPE_SECRET_KEY = process.env.STRIPE_SECRET_KEY;
 const PAYMENT_SUCCESS_URL = process.env.PAYMENT_SUCCESS_URL || "http://localhost:5173/dashboard/patient?payment=success";
 const PAYMENT_CANCEL_URL = process.env.PAYMENT_CANCEL_URL || "http://localhost:5173/dashboard/patient?payment=cancel";

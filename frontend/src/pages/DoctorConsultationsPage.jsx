@@ -1,11 +1,10 @@
 // src/pages/DoctorConsultationsPage.jsx
 import { useState, useEffect } from "react";
 import { fetchDoctorAppointments, completeConsultation } from "../services/appointmentApi";
-import { getCurrentUserId, getStoredUser } from "../utils/auth";
+import { getCurrentUserId } from "../utils/auth";
 import { format, parseISO } from "date-fns";
 
 export default function DoctorConsultationsPage() {
-	const user = getStoredUser() || {};
 	const doctorId = getCurrentUserId();
 
 	const [appointments, setAppointments] = useState([]);
@@ -16,14 +15,23 @@ export default function DoctorConsultationsPage() {
 
 	useEffect(() => {
 		async function fetchConsultations() {
+			if (!doctorId) {
+				setFeedback({ type: "error", message: "Doctor session not found. Please sign in again." });
+				setLoading(false);
+				return;
+			}
+
 			try {
 				setLoading(true);
-				if (doctorId) {
-					const data = await fetchDoctorAppointments(doctorId);
-					setAppointments(data.appointments || data.data || []);
-				}
+				setFeedback({ type: "", message: "" });
+				const data = await fetchDoctorAppointments(doctorId);
+				setAppointments(data.appointments || data.data || []);
 			} catch (error) {
 				console.error("Failed to fetch consultations:", error);
+				setFeedback({
+					type: "error",
+					message: error?.response?.data?.message || "Failed to load consultations.",
+				});
 			} finally {
 				setLoading(false);
 			}
