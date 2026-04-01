@@ -97,6 +97,18 @@ services:
       - ./backend/services/telemedicine-service:/app
       - /app/node_modules
 
+  prescription-service:
+    build: backend/services/prescription-service
+    ports:
+      - "5008:5008"
+    env_file:
+      - ./backend/services/prescription-service/.env
+    dns:
+      - 8.8.8.8
+    volumes:
+      - ./backend/services/prescription-service:/app
+      - /app/node_modules
+
   admin-service:
     build: backend/services/admin-service
     ports:
@@ -125,6 +137,7 @@ services:
       - "5173:5173"
     environment:
       - VITE_APPOINTMENT_API_URL=http://localhost:5004/api/appointments
+      - VITE_PRESCRIPTION_API_URL=http://localhost:5008/api/prescriptions
       - CHOKIDAR_USEPOLLING=true
     dns:
       - 8.8.8.8

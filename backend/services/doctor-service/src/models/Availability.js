@@ -9,8 +9,9 @@ const availabilitySchema = new mongoose.Schema({
 	slots: [
 		{
 			day: { type: String, required: true },
-			startTime: { type: String, required: true },
-			endTime: { type: String, required: true },
+			isWorking: { type: Boolean, default: true },
+			startTime: { type: String },
+			endTime: { type: String },
 		}
 	],
 }, { timestamps: true });
