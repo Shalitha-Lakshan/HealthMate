@@ -67,6 +67,18 @@ services:
       - "5007:5007"
     restart: unless-stopped
 
+  prescription-service:
+    build: backend/services/prescription-service
+    ports:
+      - "5008:5008"
+    env_file:
+      - ./backend/services/prescription-service/.env
+    dns:
+      - 8.8.8.8
+    volumes:
+      - ./backend/services/prescription-service:/app
+      - /app/node_modules
+
   admin-service:
     build:
       context: ./backend/services/admin-service
@@ -119,6 +131,7 @@ services:
     environment:
       - VITE_AUTH_API_URL=http://localhost:5001/api/auth
       - VITE_APPOINTMENT_API_URL=http://localhost:5004/api/appointments
+      - VITE_PRESCRIPTION_API_URL=http://localhost:5008/api/prescriptions
       - VITE_DOCTOR_SERVICE_URL=http://localhost:5003/api/doctors
       - VITE_PAYMENT_API_URL=http://localhost:5005/api/payments
       - VITE_ADMIN_API_URL=http://localhost:5009/api/admin
