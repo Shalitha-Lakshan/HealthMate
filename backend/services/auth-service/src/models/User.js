@@ -20,6 +20,12 @@ const userSchema = new mongoose.Schema(
 			unique: true,
 			trim: true,
 		},
+		patientId: {
+			type: String,
+			unique: true,
+			sparse: true,
+			trim: true,
+		},
 		password: {
 			type: String,
 			required: true,

@@ -6,6 +6,7 @@ const authUserSchema = new mongoose.Schema(
 		name: { type: String, trim: true },
 		email: { type: String, trim: true, lowercase: true },
 		phoneNumber: { type: String, trim: true },
+		patientId: { type: String, trim: true },
 		password: { type: String, select: false },
 		role: { type: String, enum: ["patient", "doctor", "admin"] },
 		accountStatus: { type: String, enum: ["active", "pending", "suspended", "deactivated"], default: "active" },
