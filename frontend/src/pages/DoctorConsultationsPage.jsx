@@ -1,44 +1,36 @@
 // src/pages/DoctorConsultationsPage.jsx
 import { useState, useEffect } from "react";
 import { fetchDoctorAppointments, completeConsultation } from "../services/appointmentApi";
-import { getCurrentUserId } from "../utils/auth";
+import { getStoredUser } from "../utils/auth";
 import { format, parseISO } from "date-fns";
 
 export default function DoctorConsultationsPage() {
-	const doctorId = getCurrentUserId();
+	const user = getStoredUser() || {};
+	const doctorProfile = user.doctorProfile || {};
 
 	const [appointments, setAppointments] = useState([]);
 	const [loading, setLoading] = useState(true);
 	const [activeTab, setActiveTab] = useState("Upcoming");
 	const [selectedConsultation, setSelectedConsultation] = useState(null);
-	const [feedback, setFeedback] = useState({ type: "", message: "" });
 
 	useEffect(() => {
 		async function fetchConsultations() {
-			if (!doctorId) {
-				setFeedback({ type: "error", message: "Doctor session not found. Please sign in again." });
-				setLoading(false);
-				return;
-			}
-
 			try {
 				setLoading(true);
-				setFeedback({ type: "", message: "" });
-				const data = await fetchDoctorAppointments(doctorId);
-				setAppointments(data.appointments || data.data || []);
+				if (doctorProfile._id || user.id || user._id) {
+					const docId = doctorProfile._id || user.id || user._id;
+					const data = await fetchDoctorAppointments(docId);
+					setAppointments(data.appointments || data.data || []);
+				}
 			} catch (error) {
 				console.error("Failed to fetch consultations:", error);
-				setFeedback({
-					type: "error",
-					message: error?.response?.data?.message || "Failed to load consultations.",
-				});
 			} finally {
 				setLoading(false);
 			}
 		}
 
 		fetchConsultations();
-	}, [doctorId]);
+	}, [doctorProfile._id]);
 
 	const filteredConsultations = appointments.filter((apt) => {
 		if (activeTab === "Upcoming") return apt.status === "confirmed";
@@ -57,56 +49,14 @@ export default function DoctorConsultationsPage() {
 			if (selectedConsultation?._id === appointmentId) {
 				setSelectedConsultation(prev => ({ ...prev, status: "completed" }));
 			}
-			setFeedback({ type: "success", message: "Consultation marked as completed." });
 		} catch (error) {
 			console.error("Failed to complete consultation:", error);
-			setFeedback({ type: "error", message: "Failed to mark consultation as completed." });
+			alert("Failed to mark consultation as completed.");
 		}
 	};
-
-	const handleIssuePrescription = () => {
-		if (!selectedConsultation) {
-			setFeedback({ type: "error", message: "Select a consultation to issue a prescription." });
-			return;
-		}
-
-		if (selectedConsultation) {
-			const consultationPayload = {
-				...selectedConsultation,
-				patientId:
-					selectedConsultation.patientId ||
-					selectedConsultation.patient?._id ||
-					selectedConsultation.patient?.id ||
-					"",
-				patientName:
-					selectedConsultation.patientName ||
-					selectedConsultation.patient?.name ||
-					"Unknown Patient",
-			};
-			localStorage.setItem("doctor_selected_consultation", JSON.stringify(consultationPayload));
-		}
-		setFeedback({ type: "success", message: "Consultation details sent to prescriptions." });
-		window.dispatchEvent(new Event("doctor:open-prescriptions"));
-	};
-
-	const canIssuePrescription =
-		Boolean(selectedConsultation) &&
-		["confirmed", "completed"].includes((selectedConsultation?.status || "").toLowerCase());
 
 	return (
 		<div className="space-y-6">
-			{feedback.message && (
-				<div
-					className={`rounded-xl border px-4 py-3 text-sm ${
-						feedback.type === "error"
-							? "border-rose-200 bg-rose-50 text-rose-700"
-							: "border-emerald-200 bg-emerald-50 text-emerald-700"
-					}`}
-				>
-					{feedback.message}
-				</div>
-			)}
-
 			{/* Stats Overview */}
 			<div className="grid gap-4 sm:grid-cols-3">
 				<div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
@@ -161,7 +111,7 @@ export default function DoctorConsultationsPage() {
 									</svg>
 								</div>
 								<h3 className="mt-4 text-sm font-semibold text-slate-900">No {activeTab.toLowerCase()} consultations</h3>
-								<p className="mt-1 text-xs text-slate-500">There are no consultations to display for this category.</p>
+								<p className="mt-1 text-xs text-slate-500">There are no consultations to array for this category.</p>
 							</div>
 						) : (
 							<div className="space-y-3">
@@ -207,13 +157,7 @@ export default function DoctorConsultationsPage() {
 														VIDEO
 													</span>
 												)}
-												<button
-													onClick={(event) => {
-														event.stopPropagation();
-														setSelectedConsultation(consult);
-													}}
-													className="rounded-lg bg-white px-3 py-1.5 text-xs font-semibold text-blue-600 border border-slate-200 shadow-sm transition hover:bg-slate-50"
-												>
+												<button className="rounded-lg bg-white px-3 py-1.5 text-xs font-semibold text-blue-600 border border-slate-200 shadow-sm transition hover:bg-slate-50">
 													View Details
 												</button>
 											</div>
@@ -277,11 +221,15 @@ export default function DoctorConsultationsPage() {
 								</div>
 
 								<div className="mt-6 pt-5 border-t border-slate-100 space-y-2">
-									<button
-										onClick={handleIssuePrescription}
-										disabled={!canIssuePrescription}
-										className="w-full rounded-xl border border-slate-300 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 shadow-sm hover:bg-slate-50 hover:text-slate-900 transition disabled:cursor-not-allowed disabled:opacity-60"
-									>
+									{selectedConsultation.status === "confirmed" && selectedConsultation.mode === "online" && (
+										<button className="w-full rounded-xl bg-blue-600 px-4 py-2.5 text-sm font-semibold text-white shadow-sm hover:bg-blue-700 transition flex justify-center items-center gap-2">
+											<svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+												<path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z" />
+											</svg>
+											Start Video Call
+										</button>
+									)}
+									<button className="w-full rounded-xl border border-slate-300 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 shadow-sm hover:bg-slate-50 hover:text-slate-900 transition">
 										Issue Digital Prescription
 									</button>
 									{selectedConsultation.status === "confirmed" && (
