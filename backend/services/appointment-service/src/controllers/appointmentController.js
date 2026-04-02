@@ -12,6 +12,26 @@ const AUTH_INTERNAL_TOKEN = process.env.AUTH_INTERNAL_TOKEN || "healthmate-inter
 const NOTIFICATION_SERVICE_URL = process.env.NOTIFICATION_SERVICE_URL || "http://localhost:5006/api/notifications";
 const NOTIFICATION_INTERNAL_TOKEN = process.env.NOTIFICATION_INTERNAL_TOKEN || "healthmate-internal-token";
 
+const parseOptIn = (value, defaultValue = true) => {
+	if (value === undefined || value === null) {
+		return defaultValue;
+	}
+
+	if (typeof value === "boolean") {
+		return value;
+	}
+
+	const normalized = String(value).trim().toLowerCase();
+	if (["true", "1", "yes", "y"].includes(normalized)) {
+		return true;
+	}
+	if (["false", "0", "no", "n"].includes(normalized)) {
+		return false;
+	}
+
+	return defaultValue;
+};
+
 const normalizeDateOnly = (dateValue) => {
 	const date = new Date(dateValue);
 	if (Number.isNaN(date.getTime())) {
@@ -115,8 +135,10 @@ const sendAppointmentNotification = async ({ eventType, appointment }) => {
 				doctorName: appointment.doctorName,
 				patientEmail: appointment.patientEmail,
 				patientPhone: appointment.patientPhone,
+				patientWhatsAppOptIn: appointment.patientWhatsAppOptIn,
 				doctorEmail: appointment.doctorEmail,
 				doctorPhone: appointment.doctorPhone,
+				doctorWhatsAppOptIn: appointment.doctorWhatsAppOptIn,
 			}),
 		});
 	} catch (error) {
@@ -131,11 +153,13 @@ const sanitizeAppointment = (appointment) => ({
 	patientName: appointment.patientName,
 	patientEmail: appointment.patientEmail,
 	patientPhone: appointment.patientPhone,
+	patientWhatsAppOptIn: appointment.patientWhatsAppOptIn,
 	patientAge: appointment.patientAge,
 	doctorId: appointment.doctorId,
 	doctorName: appointment.doctorName,
 	doctorEmail: appointment.doctorEmail,
 	doctorPhone: appointment.doctorPhone,
+	doctorWhatsAppOptIn: appointment.doctorWhatsAppOptIn,
 	specialty: appointment.specialty,
 	appointmentDateTime: appointment.appointmentDateTime,
 	appointmentDate: appointment.appointmentDate,
@@ -236,6 +260,7 @@ const createAppointmentHold = async (req, res) => {
 			slotTime,
 			mode,
 			reason,
+			patientWhatsAppOptIn,
 		} = req.body;
 
 		if (
@@ -303,11 +328,13 @@ const createAppointmentHold = async (req, res) => {
 			patientName: patientName.trim(),
 			patientEmail: req.user.email,
 			patientPhone: patientPhone.trim(),
+			patientWhatsAppOptIn: parseOptIn(patientWhatsAppOptIn, true),
 			patientAge: parsedAge,
 			doctorId,
 			doctorName: doctorName.trim(),
 			doctorEmail: doctorEmail.trim().toLowerCase(),
 			doctorPhone: doctorPhone.trim(),
+			doctorWhatsAppOptIn: true,
 			specialty: specialty.trim(),
 			appointmentDateTime: parsedDate,
 			appointmentDate: normalizedDate,

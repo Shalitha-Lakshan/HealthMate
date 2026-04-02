@@ -56,6 +56,8 @@ services:
       context: ./backend/services/notification-service
     env_file:
       - ./backend/services/notification-service/.env
+    volumes:
+      - notification_whatsapp_auth:/app/.wwebjs_auth
     ports:
       - "5006:5006"
     restart: unless-stopped
@@ -127,3 +129,6 @@ services:
     depends_on:
       - gateway
     restart: unless-stopped
+
+volumes:
+  notification_whatsapp_auth:
