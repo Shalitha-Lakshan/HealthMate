@@ -1,12 +1,14 @@
 FROM node:20-alpine
+
 WORKDIR /app
 
-# Install dependencies first for Docker caching
 COPY package*.json ./
-RUN npm install
+RUN npm ci --omit=dev
 
-# Copy source code
 COPY . .
 
-# Start the Node app with nodemon for hot reloading
-CMD ["npm", "run", "dev"]
+ENV NODE_ENV=production
+
+EXPOSE 5004
+
+CMD ["npm", "start"]

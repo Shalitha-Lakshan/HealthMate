@@ -8,6 +8,29 @@ const isValidEmail = (email) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
 const isValidPhoneNumber = (phoneNumber) => /^(?:\+94|0)7\d{8}$/.test((phoneNumber || "").replace(/\s+/g, ""));
 const isValidSLMCRegistration = (registrationNumber) => /^[A-Za-z0-9\-/]{4,20}$/.test((registrationNumber || "").trim());
 
+const PATIENT_ID_PREFIX = "PAT-";
+
+const extractPatientSequence = (patientId = "") => {
+	if (typeof patientId !== "string" || !patientId.startsWith(PATIENT_ID_PREFIX)) {
+		return 0;
+	}
+
+	const numericPart = Number.parseInt(patientId.slice(PATIENT_ID_PREFIX.length), 10);
+	return Number.isNaN(numericPart) ? 0 : numericPart;
+};
+
+const formatPatientId = (sequenceNumber) => `${PATIENT_ID_PREFIX}${String(sequenceNumber).padStart(4, "0")}`;
+
+const generateNextPatientId = async (UserModel) => {
+	const latestPatient = await UserModel.findOne({ patientId: { $regex: `^${PATIENT_ID_PREFIX}` } })
+		.select("patientId")
+		.sort({ patientId: -1 })
+		.lean();
+
+	const nextSequence = extractPatientSequence(latestPatient?.patientId) + 1;
+	return formatPatientId(nextSequence);
+};
+
 const normalizeDoctorVerificationStatus = (doctorProfile = {}) => {
 	if (doctorProfile.verificationStatus) {
 		return doctorProfile.verificationStatus;
@@ -18,6 +41,7 @@ const normalizeDoctorVerificationStatus = (doctorProfile = {}) => {
 
 const sanitizeUser = (userDoc) => ({
 	id: userDoc._id,
+	patientId: userDoc.patientId,
 	name: userDoc.name,
 	email: userDoc.email,
 	phoneNumber: userDoc.phoneNumber,
@@ -154,7 +178,7 @@ const getUsers = async (req, res) => {
 
 		const [users, total] = await Promise.all([
 			User.find(query)
-				.select("name email phoneNumber role accountStatus doctorProfile createdAt updatedAt")
+				.select("name email phoneNumber patientId role accountStatus doctorProfile createdAt updatedAt")
 				.sort({ createdAt: -1 })
 				.skip(skip)
 				.limit(limit),
@@ -342,23 +366,54 @@ const createUser = async (req, res) => {
 		}
 
 		const hashedPassword = await bcrypt.hash(password, 10);
-		const createdUser = await User.create({
-			name: name.trim(),
-			email: normalizedEmail,
-			phoneNumber: normalizedPhone,
-			password: hashedPassword,
-			role: targetRole,
-			accountStatus: targetRole === "doctor" ? "pending" : "active",
-			doctorProfile:
-				targetRole === "doctor"
-					? {
-						specialization: doctorProfile.specialization.trim(),
-						slmcRegistrationNumber: doctorProfile.slmcRegistrationNumber.trim(),
-						yearsOfExperience: Number(doctorProfile.yearsOfExperience),
-						verificationStatus: "pending",
+		let createdUser;
+
+		if (targetRole === "patient") {
+			let attempt = 0;
+			while (attempt < 5) {
+				attempt += 1;
+				const candidatePatientId = await generateNextPatientId(User);
+
+				try {
+					createdUser = await User.create({
+						name: name.trim(),
+						email: normalizedEmail,
+						phoneNumber: normalizedPhone,
+						password: hashedPassword,
+						role: targetRole,
+						patientId: candidatePatientId,
+						accountStatus: "active",
+					});
+					break;
+				} catch (creationError) {
+					if (creationError?.code !== 11000 || !creationError?.message?.includes("patientId")) {
+						throw creationError;
 					}
-					: undefined,
-		});
+				}
+			}
+
+			if (!createdUser) {
+				throw new Error("failed to generate unique patient id");
+			}
+		} else {
+			createdUser = await User.create({
+				name: name.trim(),
+				email: normalizedEmail,
+				phoneNumber: normalizedPhone,
+				password: hashedPassword,
+				role: targetRole,
+				accountStatus: targetRole === "doctor" ? "pending" : "active",
+				doctorProfile:
+					targetRole === "doctor"
+						? {
+							specialization: doctorProfile.specialization.trim(),
+							slmcRegistrationNumber: doctorProfile.slmcRegistrationNumber.trim(),
+							yearsOfExperience: Number(doctorProfile.yearsOfExperience),
+							verificationStatus: "pending",
+						}
+						: undefined,
+			});
+		}
 
 		await AuditLog.create({
 			actorId: req.user?.sub || "unknown",
@@ -457,6 +512,30 @@ const updateUser = async (req, res) => {
 		target.email = normalizedEmail;
 		target.phoneNumber = normalizedPhone;
 		target.role = targetRole;
+
+		if (targetRole === "patient" && !target.patientId) {
+			let attempt = 0;
+			while (attempt < 5) {
+				attempt += 1;
+				const candidatePatientId = await generateNextPatientId(User);
+
+				const existingPatientId = await User.findOne({
+					patientId: candidatePatientId,
+					_id: { $ne: target._id },
+				})
+					.select("_id")
+					.lean();
+
+				if (!existingPatientId) {
+					target.patientId = candidatePatientId;
+					break;
+				}
+			}
+
+			if (!target.patientId) {
+				return res.status(500).json({ message: "failed to assign patient id" });
+			}
+		}
 
 		if (targetRole === "doctor") {
 			target.doctorProfile = {

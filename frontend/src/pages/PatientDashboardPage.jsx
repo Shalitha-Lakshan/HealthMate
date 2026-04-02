@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { jsPDF } from "jspdf";
 import DashboardShell from "../components/DashboardShell";
 import PatientTelemedicinePage from "./PatientTelemedicinePage";
 import SymptomChatbot from "../components/SymptomChatbot";
@@ -24,6 +25,20 @@ const INITIAL_FORM_STATE = {
 	slotTime: "",
 	mode: "in-person",
 	reason: "",
+};
+
+const REPORT_TYPES = ["Lab Result", "Radiology", "Prescription", "Discharge Summary", "Other"];
+const REPORT_ID_PREFIX = "RPT-";
+
+const INITIAL_REPORT_STATE = {
+	patientName: "",
+	reportTitle: "",
+	reportType: "",
+	doctorName: "",
+	hospitalLabName: "",
+	reportDate: "",
+	notes: "",
+	file: null,
 };
 
 const formatAppointmentDate = (value) => {
@@ -52,6 +67,13 @@ function PatientDashboardPage() {
 		return paymentStatus ? "Appointments" : "Overview";
 	});
 	const [formData, setFormData] = useState({ ...INITIAL_FORM_STATE, patientName: user.name || "" });
+	const [reportFormData, setReportFormData] = useState({
+		...INITIAL_REPORT_STATE,
+		patientName: user.name || "",
+	});
+	const [medicalReports, setMedicalReports] = useState([]);
+	const [reportError, setReportError] = useState("");
+	const [reportSuccess, setReportSuccess] = useState("");
 	const [appointments, setAppointments] = useState([]);
 	const [doctors, setDoctors] = useState([]);
 	const [isLoadingDoctors, setIsLoadingDoctors] = useState(false);
@@ -204,6 +226,164 @@ function PatientDashboardPage() {
 		} finally {
 			setIsSubmitting(false);
 		}
+	};
+
+	const formatFileSize = (bytes) => {
+		if (!bytes) {
+			return "0 KB";
+		}
+
+		if (bytes < 1024 * 1024) {
+			return `${(bytes / 1024).toFixed(1)} KB`;
+		}
+
+		return `${(bytes / (1024 * 1024)).toFixed(2)} MB`;
+	};
+
+		const extractReportSequence = (reportId = "") => {
+			if (typeof reportId !== "string" || !reportId.startsWith(REPORT_ID_PREFIX)) {
+				return 0;
+			}
+
+			const parsed = Number.parseInt(reportId.slice(REPORT_ID_PREFIX.length), 10);
+			return Number.isNaN(parsed) ? 0 : parsed;
+		};
+
+		const generateReportId = () => {
+			const highestSequence = medicalReports.reduce((maxSequence, report) => {
+				const currentSequence = extractReportSequence(report.reportId);
+				return currentSequence > maxSequence ? currentSequence : maxSequence;
+			}, 0);
+
+			const nextSequence = highestSequence + 1;
+			return `${REPORT_ID_PREFIX}${String(nextSequence).padStart(4, "0")}`;
+		};
+
+		const downloadReportPdf = (report) => {
+			const doc = new jsPDF();
+			doc.setFont("helvetica", "bold");
+			doc.setFontSize(16);
+			doc.text("HealthMate Medical Report", 20, 20);
+
+			doc.setFont("helvetica", "normal");
+			doc.setFontSize(11);
+
+			const details = [
+				`Report ID: ${report.reportId}`,
+				`Patient Name: ${report.patientName}`,
+				`Report Title: ${report.reportTitle}`,
+				`Report Type: ${report.reportType}`,
+				`Doctor Name: ${report.doctorName}`,
+				`Hospital/Lab Name: ${report.hospitalLabName}`,
+				`Report Date: ${report.reportDate}`,
+				`Uploaded At: ${formatAppointmentDate(report.uploadedAt)}`,
+				`Uploaded File: ${report.fileName} (${formatFileSize(report.fileSize)})`,
+				`Notes: ${report.notes || "N/A"}`,
+			];
+
+			let y = 32;
+			details.forEach((line) => {
+				const wrappedLines = doc.splitTextToSize(line, 170);
+				doc.text(wrappedLines, 20, y);
+				y += wrappedLines.length * 7;
+			});
+
+			doc.save(`${report.reportId || "medical-report"}.pdf`);
+		};
+
+		const printReport = (report) => {
+			const printWindow = window.open("", "_blank", "width=900,height=700");
+			if (!printWindow) {
+				setReportError("Unable to open print window. Please allow pop-ups and try again.");
+				return;
+			}
+
+			const reportHtml = `
+				<html>
+					<head>
+						<title>${report.reportId} - Medical Report</title>
+						<style>
+							body { font-family: Arial, sans-serif; padding: 24px; color: #1e293b; }
+							h1 { margin-bottom: 8px; }
+							p { margin: 8px 0; font-size: 14px; }
+							.label { font-weight: 700; }
+						</style>
+					</head>
+					<body>
+						<h1>HealthMate Medical Report</h1>
+						<p><span class="label">Report ID:</span> ${report.reportId}</p>
+						<p><span class="label">Patient Name:</span> ${report.patientName}</p>
+						<p><span class="label">Report Title:</span> ${report.reportTitle}</p>
+						<p><span class="label">Report Type:</span> ${report.reportType}</p>
+						<p><span class="label">Doctor Name:</span> ${report.doctorName}</p>
+						<p><span class="label">Hospital/Lab Name:</span> ${report.hospitalLabName}</p>
+						<p><span class="label">Report Date:</span> ${report.reportDate}</p>
+						<p><span class="label">Uploaded At:</span> ${formatAppointmentDate(report.uploadedAt)}</p>
+						<p><span class="label">Uploaded File:</span> ${report.fileName} (${formatFileSize(report.fileSize)})</p>
+						<p><span class="label">Notes:</span> ${report.notes || "N/A"}</p>
+					</body>
+				</html>
+			`;
+
+			printWindow.document.open();
+			printWindow.document.write(reportHtml);
+			printWindow.document.close();
+			printWindow.focus();
+			printWindow.print();
+		};
+
+	const handleReportChange = (event) => {
+		const { name, value, files } = event.target;
+
+		if (name === "file") {
+			const selectedFile = files?.[0] || null;
+			setReportFormData((prev) => ({ ...prev, file: selectedFile }));
+			setReportError("");
+			setReportSuccess("");
+			return;
+		}
+
+		setReportFormData((prev) => ({ ...prev, [name]: value }));
+		setReportError("");
+		setReportSuccess("");
+	};
+
+	const handleReportSubmit = (event) => {
+		event.preventDefault();
+		setReportError("");
+		setReportSuccess("");
+
+		if (!reportFormData.patientName.trim()) {
+			setReportError("Please provide patient name.");
+			return;
+		}
+
+		if (!reportFormData.file) {
+			setReportError("Please upload a report file before submitting.");
+			return;
+		}
+
+		const reportEntry = {
+			id: `${Date.now()}`,
+			reportId: generateReportId(),
+			patientName: reportFormData.patientName,
+			reportTitle: reportFormData.reportTitle,
+			reportType: reportFormData.reportType,
+			doctorName: reportFormData.doctorName,
+			hospitalLabName: reportFormData.hospitalLabName,
+			reportDate: reportFormData.reportDate,
+			notes: reportFormData.notes,
+			fileName: reportFormData.file.name,
+			fileSize: reportFormData.file.size,
+			uploadedAt: new Date().toISOString(),
+		};
+
+		setMedicalReports((prev) => [reportEntry, ...prev]);
+		setReportFormData({
+			...INITIAL_REPORT_STATE,
+			patientName: user.name || "",
+		});
+		setReportSuccess("Medical report saved successfully.");
 	};
 
 	const handleConfirmPayment = async () => {
@@ -641,6 +821,217 @@ function PatientDashboardPage() {
 		</div>
 	);
 
+	const renderMedicalReports = () => (
+		<div className="grid gap-5 lg:grid-cols-[1.1fr_1fr]">
+			<section className="rounded-2xl border border-slate-200 bg-white p-5">
+				<h2 className="text-sm font-semibold text-slate-900">Upload Medical Report</h2>
+				<p className="mt-1 text-xs text-slate-500">Capture report details and attach the source file.</p>
+
+				<form className="mt-4 space-y-3" onSubmit={handleReportSubmit}>
+					<div>
+						<label htmlFor="patientName" className="mb-1 block text-xs font-semibold text-slate-600">
+							Patient Name
+						</label>
+						<input
+							id="patientName"
+							name="patientName"
+							required
+							value={reportFormData.patientName}
+							onChange={handleReportChange}
+							placeholder="John Doe"
+							className="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+						/>
+					</div>
+
+					<div>
+						<label htmlFor="reportTitle" className="mb-1 block text-xs font-semibold text-slate-600">
+							Report Title
+						</label>
+						<input
+							id="reportTitle"
+							name="reportTitle"
+							required
+							value={reportFormData.reportTitle}
+							onChange={handleReportChange}
+							placeholder="Complete Blood Count"
+							className="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+						/>
+					</div>
+
+					<div>
+						<label htmlFor="reportType" className="mb-1 block text-xs font-semibold text-slate-600">
+							Report Type
+						</label>
+						<select
+							id="reportType"
+							name="reportType"
+							required
+							value={reportFormData.reportType}
+							onChange={handleReportChange}
+							className="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+						>
+							<option value="">Select report type</option>
+							{REPORT_TYPES.map((type) => (
+								<option key={type} value={type}>
+									{type}
+								</option>
+							))}
+						</select>
+					</div>
+
+					<div className="grid gap-3 sm:grid-cols-2">
+						<div>
+							<label htmlFor="doctorName" className="mb-1 block text-xs font-semibold text-slate-600">
+								Doctor Name
+							</label>
+							<input
+								id="doctorName"
+								name="doctorName"
+								required
+								value={reportFormData.doctorName}
+								onChange={handleReportChange}
+								placeholder="Dr. Jane Smith"
+								className="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+							/>
+						</div>
+
+						<div>
+							<label htmlFor="hospitalLabName" className="mb-1 block text-xs font-semibold text-slate-600">
+								Hospital/Lab Name
+							</label>
+							<input
+								id="hospitalLabName"
+								name="hospitalLabName"
+								required
+								value={reportFormData.hospitalLabName}
+								onChange={handleReportChange}
+								placeholder="City Diagnostics Lab"
+								className="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+							/>
+						</div>
+					</div>
+
+					<div>
+						<label htmlFor="reportDate" className="mb-1 block text-xs font-semibold text-slate-600">
+							Report Date
+						</label>
+						<input
+							id="reportDate"
+							name="reportDate"
+							type="date"
+							required
+							value={reportFormData.reportDate}
+							onChange={handleReportChange}
+							className="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+						/>
+					</div>
+
+					<div>
+						<label htmlFor="notes" className="mb-1 block text-xs font-semibold text-slate-600">
+							Notes
+						</label>
+						<textarea
+							id="notes"
+							name="notes"
+							rows={4}
+							value={reportFormData.notes}
+							onChange={handleReportChange}
+							placeholder="Add any relevant comments or observations"
+							className="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+						/>
+					</div>
+
+					<div>
+						<label htmlFor="file" className="mb-1 block text-xs font-semibold text-slate-600">
+							Upload File
+						</label>
+						<input
+							id="file"
+							name="file"
+							type="file"
+							required
+							onChange={handleReportChange}
+							accept=".pdf,.jpg,.jpeg,.png,.doc,.docx"
+							className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm text-slate-700 file:mr-3 file:rounded-lg file:border-0 file:bg-blue-50 file:px-3 file:py-1.5 file:text-xs file:font-semibold file:text-blue-700 hover:file:bg-blue-100"
+						/>
+						{reportFormData.file && (
+							<p className="mt-2 text-xs text-slate-600">
+								Selected: {reportFormData.file.name} ({formatFileSize(reportFormData.file.size)})
+							</p>
+						)}
+					</div>
+
+					{reportError && (
+						<p className="rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{reportError}</p>
+					)}
+
+					{reportSuccess && (
+						<p className="rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-700">
+							{reportSuccess}
+						</p>
+					)}
+
+					<button
+						type="submit"
+						className="w-full rounded-xl bg-blue-600 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-blue-700"
+					>
+						Save Medical Report
+					</button>
+				</form>
+			</section>
+
+			<section className="rounded-2xl border border-slate-200 bg-slate-50 p-5">
+				<h2 className="text-sm font-semibold text-slate-900">Uploaded Reports</h2>
+				<p className="mt-1 text-xs text-slate-500">Recently submitted reports with report IDs will appear here.</p>
+
+				{medicalReports.length === 0 ? (
+					<p className="mt-4 rounded-xl border border-dashed border-slate-300 bg-white px-3 py-4 text-sm text-slate-500">
+						No reports uploaded yet.
+					</p>
+				) : (
+					<div className="mt-4 space-y-3">
+						{medicalReports.map((report) => (
+							<div key={report.id} className="rounded-xl border border-slate-200 bg-white p-4">
+								<p className="text-[11px] font-semibold uppercase tracking-wide text-slate-600">
+									Report ID: {report.reportId}
+								</p>
+								<p className="text-[11px] font-semibold uppercase tracking-wide text-blue-700">
+									{report.reportType}
+								</p>
+								<p className="mt-2 text-sm font-semibold text-slate-900">{report.reportTitle}</p>
+								<p className="mt-1 text-xs text-slate-600">Patient Name: {report.patientName}</p>
+								<p className="mt-1 text-xs text-slate-600">Doctor: {report.doctorName}</p>
+								<p className="mt-1 text-xs text-slate-600">Hospital/Lab: {report.hospitalLabName}</p>
+								<p className="mt-1 text-xs text-slate-600">Report Date: {report.reportDate}</p>
+								<p className="mt-1 text-xs text-slate-600">Uploaded At: {formatAppointmentDate(report.uploadedAt)}</p>
+								<p className="mt-1 text-xs text-slate-600">
+									File: {report.fileName} ({formatFileSize(report.fileSize)})
+								</p>
+								{report.notes && <p className="mt-2 text-xs text-slate-600">Notes: {report.notes}</p>}
+								<div className="mt-3 flex flex-wrap gap-2">
+									<button
+										type="button"
+										onClick={() => printReport(report)}
+										className="rounded-lg border border-slate-300 px-3 py-1.5 text-xs font-semibold text-slate-700 transition hover:bg-slate-100"
+									>
+										Print Report
+									</button>
+									<button
+										type="button"
+										onClick={() => downloadReportPdf(report)}
+										className="rounded-lg bg-blue-600 px-3 py-1.5 text-xs font-semibold text-white transition hover:bg-blue-700"
+									>
+										Download PDF
+									</button>
+								</div>
+							</div>
+						))}
+					</div>
+				)}
+			</section>
+		</div>
+	);
+
 	return (
 		<DashboardShell
 			role="patient"
@@ -651,7 +1042,9 @@ function PatientDashboardPage() {
 			title={`Welcome, ${user.name || "Patient"}`}
 			subtitle="Manage appointments, reports, and telemedicine sessions."
 		>
-			{activeMenuItem === "Telemedicine" ? (
+			{activeMenuItem === "Medical Reports" ? (
+				renderMedicalReports()
+			) : activeMenuItem === "Telemedicine" ? (
 				<PatientTelemedicinePage />
 			) : activeMenuItem === "Appointments" ? (
 				renderAppointments()
