@@ -3,6 +3,7 @@
 	"version": "1.0.0",
 	"private": true,
 	"scripts": {
+		"dev": "concurrently -k -n gateway,auth,patient,doctor,appointment,payment,notification,telemedicine,admin \"npm run dev:gateway\" \"npm run dev:auth\" \"npm run dev:patient\" \"npm run dev:doctor\" \"npm run dev:appointment\" \"npm run dev:payment\" \"npm run dev:notification\" \"npm run dev:telemedicine\" \"npm run dev:admin\"",
 		"dev:gateway": "npm --prefix gateway run dev",
 		"dev:auth": "npm --prefix services/auth-service run dev",
 		"dev:patient": "npm --prefix services/patient-service run dev",
@@ -12,5 +13,8 @@
 		"dev:notification": "npm --prefix services/notification-service run dev",
 		"dev:telemedicine": "npm --prefix services/telemedicine-service run dev",
 		"dev:admin": "npm --prefix services/admin-service run dev"
+	},
+	"devDependencies": {
+		"concurrently": "^9.0.0"
 	}
 }
