@@ -9,7 +9,7 @@ const notificationLogSchema = new mongoose.Schema(
 		},
 		channel: {
 			type: String,
-			enum: ["email", "sms"],
+			enum: ["email", "sms", "whatsapp"],
 			required: true,
 		},
 		recipientRole: {
