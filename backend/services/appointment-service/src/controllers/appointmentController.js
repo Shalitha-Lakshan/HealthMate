@@ -6,13 +6,31 @@ const SLOT_START_HOUR = 9;
 const SLOT_END_HOUR = 17;
 const PAYMENT_HOLD_MINUTES = Number(process.env.APPOINTMENT_PAYMENT_HOLD_MINUTES || 10);
 const DEFAULT_CONSULTATION_FEE = Number(process.env.DEFAULT_CONSULTATION_FEE || 3500);
-const APPOINTMENT_INTERNAL_TOKEN = process.env.APPOINTMENT_INTERNAL_TOKEN;
+const APPOINTMENT_INTERNAL_TOKEN = process.env.APPOINTMENT_INTERNAL_TOKEN || "healthmate-internal-token";
 const AUTH_SERVICE_URL = process.env.AUTH_SERVICE_URL || "http://localhost:5001/api/auth";
-const AUTH_INTERNAL_TOKEN = process.env.AUTH_INTERNAL_TOKEN;
-const DOCTOR_SERVICE_URL = process.env.DOCTOR_SERVICE_URL || "http://localhost:5003/api/doctors";
-const DOCTOR_INTERNAL_TOKEN = process.env.DOCTOR_INTERNAL_TOKEN;
+const AUTH_INTERNAL_TOKEN = process.env.AUTH_INTERNAL_TOKEN || "healthmate-internal-token";
 const NOTIFICATION_SERVICE_URL = process.env.NOTIFICATION_SERVICE_URL || "http://localhost:5006/api/notifications";
-const NOTIFICATION_INTERNAL_TOKEN = process.env.NOTIFICATION_INTERNAL_TOKEN;
+const NOTIFICATION_INTERNAL_TOKEN = process.env.NOTIFICATION_INTERNAL_TOKEN || "healthmate-internal-token";
+
+const parseOptIn = (value, defaultValue = true) => {
+	if (value === undefined || value === null) {
+		return defaultValue;
+	}
+
+	if (typeof value === "boolean") {
+		return value;
+	}
+
+	const normalized = String(value).trim().toLowerCase();
+	if (["true", "1", "yes", "y"].includes(normalized)) {
+		return true;
+	}
+	if (["false", "0", "no", "n"].includes(normalized)) {
+		return false;
+	}
+
+	return defaultValue;
+};
 
 const normalizeDateOnly = (dateValue) => {
 	const date = new Date(dateValue);
@@ -38,119 +56,6 @@ const generateSlots = () => {
 		}
 	}
 	return slots;
-};
-
-const parse12HourTimeToMinutes = (timeValue) => {
-	if (typeof timeValue !== "string") {
-		return null;
-	}
-
-	const match = timeValue.trim().match(/^(\d{1,2}):(\d{2})\s*(AM|PM)$/i);
-	if (!match) {
-		return null;
-	}
-
-	let hour = Number(match[1]);
-	const minute = Number(match[2]);
-	const period = match[3].toUpperCase();
-
-	if (Number.isNaN(hour) || Number.isNaN(minute) || hour < 1 || hour > 12 || minute < 0 || minute > 59) {
-		return null;
-	}
-
-	if (period === "AM") {
-		hour = hour % 12;
-	} else {
-		hour = hour % 12 + 12;
-	}
-
-	return hour * 60 + minute;
-};
-
-const generateSlotsForRange = (startMinutes, endMinutes) => {
-	const slots = [];
-	for (let minute = startMinutes; minute < endMinutes; minute += SLOT_INTERVAL_MINUTES) {
-		const hour = Math.floor(minute / 60);
-		const mins = minute % 60;
-		slots.push(`${String(hour).padStart(2, "0")}:${String(mins).padStart(2, "0")}`);
-	}
-	return slots;
-};
-
-const getDayNameFromDate = (dateOnly) => {
-	const date = new Date(`${dateOnly}T00:00:00`);
-	if (Number.isNaN(date.getTime())) {
-		return null;
-	}
-	return date.toLocaleDateString("en-US", { weekday: "long" });
-};
-
-const fetchDoctorAvailabilityForDate = async ({ doctorId, date }) => {
-	try {
-		const response = await fetch(`${DOCTOR_SERVICE_URL}/${doctorId}/availability/internal`, {
-			method: "GET",
-			headers: {
-				"x-internal-token": DOCTOR_INTERNAL_TOKEN,
-			},
-		});
-
-		if (!response.ok) {
-			if (response.status === 404) {
-				return { ok: true, slots: generateSlots() };
-			}
-			return { ok: false, message: "unable to fetch doctor availability" };
-		}
-
-		const availability = await response.json();
-		const dayName = getDayNameFromDate(date);
-		if (!dayName) {
-			return { ok: false, message: "invalid date" };
-		}
-
-		const daySlot = (availability?.slots || []).find(
-			(slot) => String(slot.day || "").toLowerCase() === dayName.toLowerCase()
-		);
-
-		if (!daySlot) {
-			return { ok: true, slots: [] };
-		}
-
-		if (daySlot.isWorking === false) {
-			return { ok: true, slots: [] };
-		}
-
-		const startMinutes = parse12HourTimeToMinutes(daySlot.startTime);
-		const endMinutes = parse12HourTimeToMinutes(daySlot.endTime);
-
-		if (startMinutes === null || endMinutes === null || endMinutes <= startMinutes) {
-			return { ok: true, slots: [] };
-		}
-
-		return { ok: true, slots: generateSlotsForRange(startMinutes, endMinutes) };
-	} catch (_error) {
-		return { ok: false, message: "unable to fetch doctor availability" };
-	}
-};
-
-const ensureSlotIsWithinDoctorAvailability = async ({ doctorId, date, slotTime }) => {
-	const availabilityResult = await fetchDoctorAvailabilityForDate({ doctorId, date });
-	if (!availabilityResult.ok) {
-		return {
-			ok: false,
-			statusCode: 502,
-			message: availabilityResult.message,
-		};
-	}
-
-	if (!availabilityResult.slots.includes(slotTime)) {
-		return {
-			ok: false,
-			statusCode: 400,
-			message: "selected slot is outside doctor availability",
-		};
-	}
-
-	return { ok: true };
 };
 
 const releaseExpiredPendingPayments = async () => {
@@ -230,8 +135,10 @@ const sendAppointmentNotification = async ({ eventType, appointment }) => {
 				doctorName: appointment.doctorName,
 				patientEmail: appointment.patientEmail,
 				patientPhone: appointment.patientPhone,
+				patientWhatsAppOptIn: appointment.patientWhatsAppOptIn,
 				doctorEmail: appointment.doctorEmail,
 				doctorPhone: appointment.doctorPhone,
+				doctorWhatsAppOptIn: appointment.doctorWhatsAppOptIn,
 			}),
 		});
 	} catch (error) {
@@ -246,11 +153,13 @@ const sanitizeAppointment = (appointment) => ({
 	patientName: appointment.patientName,
 	patientEmail: appointment.patientEmail,
 	patientPhone: appointment.patientPhone,
+	patientWhatsAppOptIn: appointment.patientWhatsAppOptIn,
 	patientAge: appointment.patientAge,
 	doctorId: appointment.doctorId,
 	doctorName: appointment.doctorName,
 	doctorEmail: appointment.doctorEmail,
 	doctorPhone: appointment.doctorPhone,
+	doctorWhatsAppOptIn: appointment.doctorWhatsAppOptIn,
 	specialty: appointment.specialty,
 	appointmentDateTime: appointment.appointmentDateTime,
 	appointmentDate: appointment.appointmentDate,
@@ -309,16 +218,7 @@ const getAvailableSlots = async (req, res) => {
 			return res.status(400).json({ message: "invalid date format" });
 		}
 
-		const availabilityResult = await fetchDoctorAvailabilityForDate({
-			doctorId,
-			date: normalizedDate,
-		});
-
-		if (!availabilityResult.ok) {
-			return res.status(502).json({ message: availabilityResult.message });
-		}
-
-		const allSlots = availabilityResult.slots;
+		const allSlots = generateSlots();
 
 		const existingAppointments = await Appointment.find({
 			doctorId,
@@ -343,29 +243,6 @@ const getAvailableSlots = async (req, res) => {
 	}
 };
 
-const getAppointmentByIdInternal = async (req, res) => {
-	try {
-		const internalToken = req.headers["x-internal-token"];
-		if (!internalToken || internalToken !== APPOINTMENT_INTERNAL_TOKEN) {
-			return res.status(401).json({ message: "invalid internal service token" });
-		}
-
-		const { id } = req.params;
-		if (!Types.ObjectId.isValid(id)) {
-			return res.status(400).json({ message: "invalid appointment id" });
-		}
-
-		const appointment = await Appointment.findById(id);
-		if (!appointment) {
-			return res.status(404).json({ message: "appointment not found" });
-		}
-
-		return res.status(200).json({ appointment: sanitizeAppointment(appointment) });
-	} catch (error) {
-		return res.status(500).json({ message: "failed to fetch appointment", error: error.message });
-	}
-};
-
 const createAppointmentHold = async (req, res) => {
 	try {
 		await releaseExpiredPendingPayments();
@@ -383,6 +260,7 @@ const createAppointmentHold = async (req, res) => {
 			slotTime,
 			mode,
 			reason,
+			patientWhatsAppOptIn,
 		} = req.body;
 
 		if (
@@ -432,16 +310,6 @@ const createAppointmentHold = async (req, res) => {
 			return res.status(400).json({ message: "appointment date and time must be in the future" });
 		}
 
-		const availabilityCheck = await ensureSlotIsWithinDoctorAvailability({
-			doctorId,
-			date: normalizedDate,
-			slotTime,
-		});
-
-		if (!availabilityCheck.ok) {
-			return res.status(availabilityCheck.statusCode).json({ message: availabilityCheck.message });
-		}
-
 		const conflictingAppointment = await Appointment.findOne({
 			doctorId,
 			appointmentDate: normalizedDate,
@@ -460,11 +328,13 @@ const createAppointmentHold = async (req, res) => {
 			patientName: patientName.trim(),
 			patientEmail: req.user.email,
 			patientPhone: patientPhone.trim(),
+			patientWhatsAppOptIn: parseOptIn(patientWhatsAppOptIn, true),
 			patientAge: parsedAge,
 			doctorId,
 			doctorName: doctorName.trim(),
 			doctorEmail: doctorEmail.trim().toLowerCase(),
 			doctorPhone: doctorPhone.trim(),
+			doctorWhatsAppOptIn: true,
 			specialty: specialty.trim(),
 			appointmentDateTime: parsedDate,
 			appointmentDate: normalizedDate,
@@ -508,11 +378,6 @@ const getDoctorAppointments = async (req, res) => {
 	try {
 		await releaseExpiredPendingPayments();
 		const { doctorId } = req.params;
-
-		if (String(req.user.sub) !== String(doctorId)) {
-			return res.status(403).json({ message: "you can only view your own appointments" });
-		}
-
 		const query = {
 			$or: [
 				{ doctorId },
@@ -725,16 +590,6 @@ const rescheduleAppointment = async (req, res) => {
 			return res.status(400).json({ message: "appointment date and time must be in the future" });
 		}
 
-		const availabilityCheck = await ensureSlotIsWithinDoctorAvailability({
-			doctorId: appointment.doctorId,
-			date: normalizedDate,
-			slotTime,
-		});
-
-		if (!availabilityCheck.ok) {
-			return res.status(availabilityCheck.statusCode).json({ message: availabilityCheck.message });
-		}
-
 		const conflict = await Appointment.findOne({
 			_id: { $ne: id },
 			doctorId: appointment.doctorId,
@@ -895,7 +750,6 @@ module.exports = {
 	getDoctorAppointments,
 	confirmAppointmentPayment,
 	confirmAppointmentPaymentInternal,
-	getAppointmentByIdInternal,
 	completeConsultation,
 	getAdminAppointments,
 	rescheduleAppointment,

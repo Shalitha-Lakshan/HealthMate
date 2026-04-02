@@ -2,7 +2,7 @@ const bcrypt = require("bcryptjs");
 const User = require("../models/User");
 const { generateAccessToken } = require("../services/tokenService");
 
-const INTERNAL_SERVICE_TOKEN = process.env.INTERNAL_SERVICE_TOKEN;
+const INTERNAL_SERVICE_TOKEN = process.env.INTERNAL_SERVICE_TOKEN || "healthmate-internal-token";
 
 const isValidEmail = (email) => {
 	const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -21,8 +21,56 @@ const isValidSLMCRegistration = (registrationNumber) => {
 	return slmcRegex.test(normalized);
 };
 
+const PATIENT_ID_PREFIX = "PAT-";
+
+const extractPatientSequence = (patientId = "") => {
+	if (typeof patientId !== "string" || !patientId.startsWith(PATIENT_ID_PREFIX)) {
+		return 0;
+	}
+
+	const numericPart = Number.parseInt(patientId.slice(PATIENT_ID_PREFIX.length), 10);
+	return Number.isNaN(numericPart) ? 0 : numericPart;
+};
+
+const formatPatientId = (sequenceNumber) => `${PATIENT_ID_PREFIX}${String(sequenceNumber).padStart(4, "0")}`;
+
+const generateNextPatientId = async () => {
+	const latestPatient = await User.findOne({ patientId: { $regex: `^${PATIENT_ID_PREFIX}` } })
+		.select("patientId")
+		.sort({ patientId: -1 })
+		.lean();
+
+	const nextSequence = extractPatientSequence(latestPatient?.patientId) + 1;
+	return formatPatientId(nextSequence);
+};
+
+const assignPatientIdIfMissing = async (userDoc) => {
+	if (!userDoc || userDoc.role !== "patient" || userDoc.patientId) {
+		return userDoc;
+	}
+
+	let attempt = 0;
+	while (attempt < 5) {
+		attempt += 1;
+		const candidatePatientId = await generateNextPatientId();
+
+		try {
+			userDoc.patientId = candidatePatientId;
+			await userDoc.save();
+			return userDoc;
+		} catch (saveError) {
+			if (saveError?.code !== 11000 || !saveError?.message?.includes("patientId")) {
+				throw saveError;
+			}
+		}
+	}
+
+	throw new Error("failed to assign unique patient id");
+};
+
 const sanitizeUser = (userDoc) => ({
 	id: userDoc._id,
+	patientId: userDoc.patientId,
 	name: userDoc.name,
 	email: userDoc.email,
 	phoneNumber: userDoc.phoneNumber,
@@ -102,23 +150,51 @@ const register = async (req, res) => {
 
 		const hashedPassword = await bcrypt.hash(password, 10);
 		const targetRole = role || "patient";
-		const user = await User.create({
-			name: name.trim(),
-			email: email.toLowerCase().trim(),
-			phoneNumber: phoneNumber.trim(),
-			password: hashedPassword,
-			role: targetRole,
-			accountStatus: targetRole === "doctor" ? "pending" : "active",
-			doctorProfile:
-				targetRole === "doctor"
-					? {
-						specialization: doctorProfile.specialization.trim(),
-						slmcRegistrationNumber: doctorProfile.slmcRegistrationNumber.trim(),
-						yearsOfExperience: Number(doctorProfile.yearsOfExperience),
-						verificationStatus: "pending",
+
+		let user;
+		if (targetRole === "patient") {
+			let attempt = 0;
+			while (attempt < 5) {
+				attempt += 1;
+				const candidatePatientId = await generateNextPatientId();
+
+				try {
+					user = await User.create({
+						name: name.trim(),
+						email: email.toLowerCase().trim(),
+						phoneNumber: phoneNumber.trim(),
+						password: hashedPassword,
+						role: targetRole,
+						patientId: candidatePatientId,
+						accountStatus: "active",
+					});
+					break;
+				} catch (creationError) {
+					if (creationError?.code !== 11000 || !creationError?.message?.includes("patientId")) {
+						throw creationError;
 					}
-					: undefined,
-		});
+				}
+			}
+
+			if (!user) {
+				throw new Error("failed to generate unique patient id");
+			}
+		} else {
+			user = await User.create({
+				name: name.trim(),
+				email: email.toLowerCase().trim(),
+				phoneNumber: phoneNumber.trim(),
+				password: hashedPassword,
+				role: targetRole,
+				accountStatus: "pending",
+				doctorProfile: {
+					specialization: doctorProfile.specialization.trim(),
+					slmcRegistrationNumber: doctorProfile.slmcRegistrationNumber.trim(),
+					yearsOfExperience: Number(doctorProfile.yearsOfExperience),
+					verificationStatus: "pending",
+				},
+			});
+		}
 
 		const token = generateAccessToken({
 			sub: user._id.toString(),
@@ -167,6 +243,10 @@ const login = async (req, res) => {
 		const isPasswordValid = await bcrypt.compare(password, user.password);
 		if (!isPasswordValid) {
 			return res.status(401).json({ message: "invalid credentials" });
+		}
+
+		if (user.role === "patient" && !user.patientId) {
+			await assignPatientIdIfMissing(user);
 		}
 
 		const token = generateAccessToken({

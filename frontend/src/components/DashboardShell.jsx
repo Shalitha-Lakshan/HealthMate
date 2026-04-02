@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { clearAuthStorage, getStoredUser } from "../utils/auth";
 
@@ -8,7 +8,7 @@ const menuByRole = {
 	admin: ["Overview", "User Management", "Doctor Verification", "Appointment Management", "Payment Management", "Operations"],
 };
 
-function DashboardShell({ role = "patient", title, subtitle, children, onMenuChange, initialActiveMenuItem, activeMenuItem: controlledActiveMenuItem }) {
+function DashboardShell({ role = "patient", title, subtitle, children, onMenuChange, initialActiveMenuItem }) {
 	const navigate = useNavigate();
 	const user = getStoredUser() || {};
 	const [isSidebarOpen, setIsSidebarOpen] = useState(false);
@@ -16,12 +16,6 @@ function DashboardShell({ role = "patient", title, subtitle, children, onMenuCha
 	const menuItems = useMemo(() => menuByRole[role] || menuByRole.patient, [role]);
 	const defaultMenuItem = initialActiveMenuItem || menuItems[0] || "Overview";
 	const [activeMenuItem, setActiveMenuItem] = useState(defaultMenuItem);
-
-	useEffect(() => {
-		if (controlledActiveMenuItem && menuItems.includes(controlledActiveMenuItem)) {
-			setActiveMenuItem(controlledActiveMenuItem);
-		}
-	}, [controlledActiveMenuItem, menuItems]);
 
 	const handleLogout = () => {
 		clearAuthStorage();

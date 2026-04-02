@@ -6,7 +6,6 @@ const {
 	getDoctorAppointments,
 	confirmAppointmentPayment,
 	confirmAppointmentPaymentInternal,
-	getAppointmentByIdInternal,
 	completeConsultation,
 	getAdminAppointments,
 	rescheduleAppointment,
@@ -19,7 +18,6 @@ const { requireAuth, authorizeRoles } = require("../middlewares/authMiddleware")
 const router = express.Router();
 
 router.post("/internal/payment-confirmation", confirmAppointmentPaymentInternal);
-router.get("/internal/:id", getAppointmentByIdInternal);
 
 router.use(requireAuth);
 

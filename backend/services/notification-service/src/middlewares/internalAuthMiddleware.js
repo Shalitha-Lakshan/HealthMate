@@ -1,4 +1,4 @@
-const NOTIFICATION_INTERNAL_TOKEN = process.env.NOTIFICATION_INTERNAL_TOKEN;
+const NOTIFICATION_INTERNAL_TOKEN = process.env.NOTIFICATION_INTERNAL_TOKEN || "healthmate-internal-token";
 
 const requireInternalToken = (req, res, next) => {
 	const token = req.headers["x-internal-token"];

@@ -4,17 +4,9 @@ const connectDB = require("./config/db");
 
 const PORT = process.env.PORT || 5004;
 const MONGO_URI = process.env.MONGO_URI;
-const requiredEnvVars = [
-	"MONGO_URI",
-	"APPOINTMENT_INTERNAL_TOKEN",
-	"AUTH_INTERNAL_TOKEN",
-	"DOCTOR_INTERNAL_TOKEN",
-	"NOTIFICATION_INTERNAL_TOKEN",
-];
 
-const missingVars = requiredEnvVars.filter((name) => !process.env[name]);
-if (missingVars.length > 0) {
-	console.error(`Missing required environment variables: ${missingVars.join(", ")}`);
+if (!MONGO_URI) {
+	console.error("MONGO_URI is missing in environment variables");
 	process.exit(1);
 }
 

@@ -73,6 +73,38 @@ const sendSms = async ({ to, body }) => {
 	};
 };
 
+const sendWhatsApp = async ({ to, body }) => {
+	const twilioClient = getTwilioClient();
+	const from = process.env.TWILIO_WHATSAPP_FROM;
+	const normalizedTo = normalizeToE164(to);
+
+	if (!twilioClient || !from) {
+		return {
+			sent: false,
+			skipped: true,
+			message: "Twilio WhatsApp configuration missing",
+		};
+	}
+
+	if (!normalizedTo) {
+		throw new Error("invalid recipient phone number format. use E.164 (e.g. +9477XXXXXXX)");
+	}
+
+	const response = await twilioClient.messages.create({
+		from: `whatsapp:${from}`,
+		to: `whatsapp:${normalizedTo}`,
+		body,
+	});
+
+	return {
+		sent: true,
+		sid: response.sid,
+		status: response.status,
+		to: normalizedTo,
+	};
+};
+
 module.exports = {
 	sendSms,
+	sendWhatsApp,
 };

@@ -1,65 +1,9 @@
 import { useState, useEffect } from "react";
-import { getCurrentUserId } from "../utils/auth";
+import { getStoredUser } from "../utils/auth";
 import { fetchDoctorAppointments } from "../services/appointmentApi";
 import { getDoctorAvailability, updateDoctorAvailability } from "../services/doctorApi";
 import Calendar from "react-calendar";
 import "react-calendar/dist/Calendar.css";
-
-const DEFAULT_WEEKLY_AVAILABILITY = [
-	{ day: "Monday", isWorking: true, startTime: "09:00 AM", endTime: "05:00 PM" },
-	{ day: "Tuesday", isWorking: true, startTime: "09:00 AM", endTime: "05:00 PM" },
-	{ day: "Wednesday", isWorking: true, startTime: "09:00 AM", endTime: "05:00 PM" },
-	{ day: "Thursday", isWorking: true, startTime: "09:00 AM", endTime: "05:00 PM" },
-	{ day: "Friday", isWorking: true, startTime: "09:00 AM", endTime: "05:00 PM" },
-	{ day: "Saturday", isWorking: false, startTime: "09:00 AM", endTime: "01:00 PM" },
-	{ day: "Sunday", isWorking: false, startTime: "09:00 AM", endTime: "01:00 PM" },
-];
-
-const normalizeAvailability = (slots) => {
-	if (!Array.isArray(slots) || slots.length === 0) {
-		return DEFAULT_WEEKLY_AVAILABILITY;
-	}
-
-	const mapped = slots.map((slot) => ({
-		day: slot.day,
-		isWorking: slot.isWorking !== false,
-		startTime: slot.startTime || "09:00 AM",
-		endTime: slot.endTime || "05:00 PM",
-	}));
-
-	if (mapped.some((item) => !item.day)) {
-		return DEFAULT_WEEKLY_AVAILABILITY;
-	}
-
-	return mapped;
-};
-
-const parse12HourTimeToMinutes = (timeValue) => {
-	if (typeof timeValue !== "string") {
-		return null;
-	}
-
-	const match = timeValue.trim().match(/^(\d{1,2}):(\d{2})\s*(AM|PM)$/i);
-	if (!match) {
-		return null;
-	}
-
-	let hour = Number(match[1]);
-	const minute = Number(match[2]);
-	const period = match[3].toUpperCase();
-
-	if (Number.isNaN(hour) || Number.isNaN(minute)) {
-		return null;
-	}
-
-	if (period === "AM") {
-		hour = hour % 12;
-	} else {
-		hour = hour % 12 + 12;
-	}
-
-	return hour * 60 + minute;
-};
 
 function DoctorSchedulePage() {
 	const [activeTab, setActiveTab] = useState("calendar");
@@ -69,36 +13,38 @@ function DoctorSchedulePage() {
 	const [availability, setAvailability] = useState([]);
 	const [saving, setSaving] = useState(false);
 	const [selectedAppointment, setSelectedAppointment] = useState(null);
-	const [feedback, setFeedback] = useState({ type: "", message: "" });
-
-	const doctorId = getCurrentUserId();
+	
+	const user = getStoredUser() || {};
+	const doctorId = user.id || user._id;
 	const token = localStorage.getItem("healthmate_token");
 
 	useEffect(() => {
 		const loadData = async () => {
-			if (!doctorId) {
-				setFeedback({ type: "error", message: "Doctor session not found. Please sign in again." });
-				return;
-			}
+			if (!doctorId) return;
 			setLoading(true);
 			try {
-				setFeedback({ type: "", message: "" });
 				if (activeTab === "calendar") {
 					const data = await fetchDoctorAppointments(doctorId);
 					setAppointments(data.appointments || []);
 				} else if (activeTab === "availability") {
 					const data = await getDoctorAvailability(doctorId, token);
-					setAvailability(normalizeAvailability(data?.slots));
+					if (data && data.slots && data.slots.length > 0) {
+						setAvailability(data.slots);
+					} else {
+						// Initialize with default if not found
+						setAvailability([
+							{ day: "Monday", isWorking: true, startTime: "09:00 AM", endTime: "05:00 PM" },
+							{ day: "Tuesday", isWorking: true, startTime: "09:00 AM", endTime: "05:00 PM" },
+							{ day: "Wednesday", isWorking: true, startTime: "09:00 AM", endTime: "05:00 PM" },
+							{ day: "Thursday", isWorking: true, startTime: "09:00 AM", endTime: "05:00 PM" },
+							{ day: "Friday", isWorking: true, startTime: "09:00 AM", endTime: "05:00 PM" },
+							{ day: "Saturday", isWorking: false, startTime: "09:00 AM", endTime: "01:00 PM" },
+							{ day: "Sunday", isWorking: false, startTime: "09:00 AM", endTime: "01:00 PM" },
+						]);
+					}
 				}
 			} catch (err) {
 				console.error("Failed to load data", err);
-				setFeedback({
-					type: "error",
-					message:
-						activeTab === "availability"
-							? "Failed to load availability settings."
-							: "Failed to load schedule appointments.",
-				});
 			} finally {
 				setLoading(false);
 			}
@@ -109,17 +55,12 @@ function DoctorSchedulePage() {
 	const handleSaveAvailability = async () => {
 		setSaving(true);
 		try {
-			const payload = availability.map((item) => ({
-				day: item.day,
-				isWorking: item.isWorking !== false,
-				startTime: item.startTime || "09:00 AM",
-				endTime: item.endTime || "05:00 PM",
-			}));
-			await updateDoctorAvailability(doctorId, token, payload);
-			setFeedback({ type: "success", message: "Availability saved successfully." });
+			// Save current availability state
+			await updateDoctorAvailability(doctorId, token, availability);
+			alert("Availability saved successfully!");
 		} catch (err) {
 			console.error("Failed to save availability", err);
-			setFeedback({ type: "error", message: err?.message || "Failed to save availability." });
+			alert("Failed to save availability");
 		} finally {
 			setSaving(false);
 		}
@@ -216,42 +157,13 @@ function DoctorSchedulePage() {
 			};
 		});
 
-	const selectedDayName = selectedDate.toLocaleDateString("en-US", { weekday: "long" });
-	const selectedDayAvailability = availability.find(
-		(item) => String(item.day || "").toLowerCase() === selectedDayName.toLowerCase()
-	);
-
-	const totalSlots = (() => {
-		if (!selectedDayAvailability || selectedDayAvailability.isWorking === false) {
-			return 0;
-		}
-
-		const startMinutes = parse12HourTimeToMinutes(selectedDayAvailability.startTime || "");
-		const endMinutes = parse12HourTimeToMinutes(selectedDayAvailability.endTime || "");
-
-		if (startMinutes === null || endMinutes === null || endMinutes <= startMinutes) {
-			return 0;
-		}
-
-		return Math.floor((endMinutes - startMinutes) / 30);
-	})();
+	// Calculate Daily Summary logic
+	const totalSlots = availability.length > 0 ? availability.length * 8 : 16; // Simple estimation based on hours 
 	const bookedSlots = scheduleData.length;
 	const availableSlots = Math.max(0, totalSlots - bookedSlots);
 
 	return (
 		<div className="space-y-6">
-			{feedback.message && (
-				<div
-					className={`rounded-xl border px-4 py-3 text-sm ${
-						feedback.type === "error"
-							? "border-rose-200 bg-rose-50 text-rose-700"
-							: "border-emerald-200 bg-emerald-50 text-emerald-700"
-					}`}
-				>
-					{feedback.message}
-				</div>
-			)}
-
 			<div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
 				<div>
 					<h2 className="text-xl font-bold text-slate-900">My Schedule</h2>
@@ -473,6 +385,11 @@ function DoctorSchedulePage() {
 							<button onClick={() => setSelectedAppointment(null)} className="rounded-xl border border-slate-200 px-4 py-2 text-sm font-semibold text-slate-700 transition hover:bg-slate-50">
 								Close
 							</button>
+							{selectedAppointment.status === "confirmed" && selectedAppointment.mode === "online" && (
+								<button className="rounded-xl bg-blue-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-blue-700">
+									Start Video Call
+								</button>
+							)}
 						</div>
 					</div>
 				</div>
