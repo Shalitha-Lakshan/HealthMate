@@ -3,6 +3,7 @@ import DashboardShell from "../components/DashboardShell";
 import DoctorTelemedicinePage from "./DoctorTelemedicinePage";
 import DoctorSchedulePage from "./DoctorSchedulePage";
 import DoctorConsultationsPage from "./DoctorConsultationsPage";
+import DoctorPrescriptionsPage from "./DoctorPrescriptionsPage";
 import { getStoredUser } from "../utils/auth";
 
 function DoctorDashboardPage() {
@@ -37,6 +38,8 @@ function DoctorDashboardPage() {
 				<DoctorSchedulePage />
 			) : activeMenuItem === "Consultations" ? (
 				<DoctorConsultationsPage />
+			) : activeMenuItem === "Prescriptions" ? (
+				<DoctorPrescriptionsPage />
 			) : (
 				<>
 					<div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
