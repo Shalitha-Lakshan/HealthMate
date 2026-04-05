@@ -1,4 +1,20 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
+
+const PRESCRIPTIONS_STORAGE_KEY = "doctor-prescriptions-activity";
+
+const loadStoredPrescriptions = () => {
+	try {
+		const raw = window.localStorage.getItem(PRESCRIPTIONS_STORAGE_KEY);
+		if (!raw) {
+			return null;
+		}
+
+		const parsed = JSON.parse(raw);
+		return Array.isArray(parsed) ? parsed : null;
+	} catch {
+		return null;
+	}
+};
 
 function DoctorPrescriptionsPage() {
 	const createPrescriptionId = () => `rx-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
@@ -11,9 +27,26 @@ function DoctorPrescriptionsPage() {
 		],
 		[]
 	);
-	const [draftPrescriptions, setDraftPrescriptions] = useState(seedPrescriptions);
+	const [draftPrescriptions, setDraftPrescriptions] = useState(() => loadStoredPrescriptions() ?? seedPrescriptions);
 	const [isCreateOpen, setIsCreateOpen] = useState(false);
 	const [formState, setFormState] = useState({ patient: "", condition: "", notes: "" });
+	const [successMessage, setSuccessMessage] = useState("");
+
+	useEffect(() => {
+		if (!successMessage) {
+			return;
+		}
+
+		const timeoutId = setTimeout(() => {
+			setSuccessMessage("");
+		}, 2500);
+
+		return () => clearTimeout(timeoutId);
+	}, [successMessage]);
+
+	useEffect(() => {
+		window.localStorage.setItem(PRESCRIPTIONS_STORAGE_KEY, JSON.stringify(draftPrescriptions));
+	}, [draftPrescriptions]);
 
 	const handleCreatePrescription = (event) => {
 		event.preventDefault();
@@ -41,12 +74,9 @@ function DoctorPrescriptionsPage() {
 	};
 
 	const handleDeletePrescription = (prescriptionId) => {
-		const shouldDelete = window.confirm("Delete this prescription activity item?");
-		if (!shouldDelete) {
-			return;
-		}
-
+		const deletedItem = draftPrescriptions.find((item) => item.id === prescriptionId);
 		setDraftPrescriptions((prev) => prev.filter((item) => item.id !== prescriptionId));
+		setSuccessMessage(`Prescription activity deleted${deletedItem?.patient ? ` for ${deletedItem.patient}` : ""}.`);
 	};
 
 	return (
@@ -74,6 +104,12 @@ function DoctorPrescriptionsPage() {
 			</div>
 
 			<section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+				{successMessage && (
+					<div className="mb-4 rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs font-semibold text-emerald-700">
+						{successMessage}
+					</div>
+				)}
+
 				<div className="mb-4 flex items-center justify-between">
 					<h3 className="text-sm font-semibold text-slate-900">Recent Prescription Activity</h3>
 					<button
