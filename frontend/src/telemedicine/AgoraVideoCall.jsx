@@ -10,6 +10,32 @@ function AgoraVideoCall({ appId, channelName, token, uid, mode }) {
 
 	const [status, setStatus] = useState("idle");
 	const [error, setError] = useState("");
+	const [isMicMuted, setIsMicMuted] = useState(false);
+	const [isCameraOff, setIsCameraOff] = useState(false);
+
+	const toggleMic = async () => {
+		const audio = tracksRef.current?.audio;
+		if (!audio) return;
+		try {
+			const next = !isMicMuted;
+			await audio.setEnabled(!next);
+			setIsMicMuted(next);
+		} catch (err) {
+			setError(err?.message || "Failed to toggle microphone");
+		}
+	};
+
+	const toggleCamera = async () => {
+		const video = tracksRef.current?.video;
+		if (!video) return;
+		try {
+			const next = !isCameraOff;
+			await video.setEnabled(!next);
+			setIsCameraOff(next);
+		} catch (err) {
+			setError(err?.message || "Failed to toggle camera");
+		}
+	};
 
 	const leaveCall = async () => {
 		try {
@@ -26,6 +52,8 @@ function AgoraVideoCall({ appId, channelName, token, uid, mode }) {
 			await client.leave();
 			if (remoteContainerRef.current) remoteContainerRef.current.innerHTML = "";
 			setStatus("left");
+			setIsMicMuted(false);
+			setIsCameraOff(false);
 		} catch (err) {
 			setError(err?.message || "Failed to leave call");
 		}
@@ -81,6 +109,8 @@ function AgoraVideoCall({ appId, channelName, token, uid, mode }) {
 		const join = async () => {
 			safeSetStatus("joining");
 			safeSetError("");
+			setIsMicMuted(false);
+			setIsCameraOff(false);
 
 			try {
 				client.removeAllListeners();
@@ -142,10 +172,37 @@ function AgoraVideoCall({ appId, channelName, token, uid, mode }) {
 		<div className="grid gap-4">
 			<div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3">
 				<p className="text-sm font-semibold text-slate-900">Agora Call</p>
-				<div className="flex items-center gap-3">
-					<p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+				<div className="flex flex-wrap items-center gap-2">
+					<p className="mr-2 text-xs font-semibold uppercase tracking-wide text-slate-500">
 						{mode} • {status}
 					</p>
+
+					<button
+						type="button"
+						onClick={toggleMic}
+						disabled={status !== "connected"}
+						className={`rounded-xl border px-3 py-2 text-xs font-semibold transition disabled:cursor-not-allowed disabled:opacity-60 ${
+							isMicMuted
+								? "border-rose-300 bg-rose-50 text-rose-700 hover:bg-rose-100"
+								: "border-slate-300 bg-white text-slate-700 hover:bg-slate-100"
+						}`}
+					>
+						{isMicMuted ? "Mic muted" : "Mute mic"}
+					</button>
+
+					<button
+						type="button"
+						onClick={toggleCamera}
+						disabled={status !== "connected"}
+						className={`rounded-xl border px-3 py-2 text-xs font-semibold transition disabled:cursor-not-allowed disabled:opacity-60 ${
+							isCameraOff
+								? "border-rose-300 bg-rose-50 text-rose-700 hover:bg-rose-100"
+								: "border-slate-300 bg-white text-slate-700 hover:bg-slate-100"
+						}`}
+					>
+						{isCameraOff ? "Camera off" : "Turn camera off"}
+					</button>
+
 					<button
 						type="button"
 						onClick={leaveCall}
@@ -157,12 +214,30 @@ function AgoraVideoCall({ appId, channelName, token, uid, mode }) {
 				</div>
 			</div>
 
-			{error && <div className="rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">{error}</div>}
+			{error && (
+				<div className="rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+					{error}
+				</div>
+			)}
 
 			<div className="grid gap-4 lg:grid-cols-2">
 				<div className="overflow-hidden rounded-3xl border border-slate-200 bg-slate-950">
-					<div className="p-3">
+					<div className="flex items-center justify-between gap-3 p-3">
 						<p className="text-xs font-semibold uppercase tracking-wide text-slate-200">You</p>
+						{status === "connected" && (
+							<div className="flex items-center gap-2">
+								{isMicMuted && (
+									<span className="rounded-full bg-rose-500/20 px-2 py-0.5 text-[11px] font-semibold text-rose-200">
+										Mic muted
+									</span>
+								)}
+								{isCameraOff && (
+									<span className="rounded-full bg-rose-500/20 px-2 py-0.5 text-[11px] font-semibold text-rose-200">
+										Camera off
+									</span>
+								)}
+							</div>
+						)}
 					</div>
 					<div ref={localVideoRef} className="h-72 w-full" />
 				</div>
