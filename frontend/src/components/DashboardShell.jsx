@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { clearAuthStorage, getStoredUser } from "../utils/auth";
 
@@ -8,18 +8,40 @@ const menuByRole = {
 	admin: ["Overview", "User Management", "Doctor Verification", "Appointment Management", "Payment Management", "Operations"],
 };
 
-function DashboardShell({ role = "patient", title, subtitle, children, onMenuChange, initialActiveMenuItem }) {
+function DashboardShell({ role = "patient", title, subtitle, children, onMenuChange, initialActiveMenuItem, activeMenuItem: externalActiveMenuItem }) {
 	const navigate = useNavigate();
 	const user = getStoredUser() || {};
 	const [isSidebarOpen, setIsSidebarOpen] = useState(false);
+	const profileName = user.name || "User";
+	const profilePhoto = user.profilePhoto || "";
+	const profileInitials = profileName
+		.split(" ")
+		.filter(Boolean)
+		.slice(0, 2)
+		.map((part) => part[0]?.toUpperCase())
+		.join("") || "U";
 
 	const menuItems = useMemo(() => menuByRole[role] || menuByRole.patient, [role]);
 	const defaultMenuItem = initialActiveMenuItem || menuItems[0] || "Overview";
 	const [activeMenuItem, setActiveMenuItem] = useState(defaultMenuItem);
 
+	useEffect(() => {
+		if (typeof externalActiveMenuItem === "string" && externalActiveMenuItem !== activeMenuItem) {
+			setActiveMenuItem(externalActiveMenuItem);
+		}
+	}, [externalActiveMenuItem, activeMenuItem]);
+
 	const handleLogout = () => {
 		clearAuthStorage();
 		navigate("/login");
+	};
+
+	const handleOpenProfile = () => {
+		setActiveMenuItem("Profile");
+		if (typeof onMenuChange === "function") {
+			onMenuChange("Profile");
+		}
+		setIsSidebarOpen(false);
 	};
 
 	return (
@@ -39,6 +61,7 @@ function DashboardShell({ role = "patient", title, subtitle, children, onMenuCha
 						isSidebarOpen ? "translate-x-0" : "-translate-x-[120%]"
 					}`}
 				>
+					<div className="flex h-full flex-col">
 					<div className="flex items-center gap-3 border-b border-slate-200 pb-5">
 						<div className="flex h-10 w-10 items-center justify-center rounded-xl bg-blue-600 text-sm font-bold text-white shadow-sm">
 							H
@@ -80,6 +103,29 @@ function DashboardShell({ role = "patient", title, subtitle, children, onMenuCha
 						<p className="mt-3 inline-flex rounded-lg bg-slate-200 px-2 py-1 text-[11px] font-semibold uppercase text-slate-700">
 							{user.role || role}
 						</p>
+					</div>
+
+					<button
+						type="button"
+						onClick={handleOpenProfile}
+						className="mt-auto flex w-full items-center gap-3 rounded-2xl border border-slate-200 bg-slate-50 p-3 text-left transition hover:border-blue-200 hover:bg-blue-50"
+					>
+						{profilePhoto ? (
+							<img
+								src={profilePhoto}
+								alt="Profile"
+								className="h-11 w-11 rounded-xl border border-slate-200 object-cover"
+							/>
+						) : (
+							<div className="flex h-11 w-11 items-center justify-center rounded-xl bg-slate-900 text-xs font-bold text-white">
+								{profileInitials}
+							</div>
+						)}
+						<div className="min-w-0">
+							<p className="truncate text-sm font-semibold text-slate-900">{profileName}</p>
+							<p className="text-xs text-slate-500">Open Profile</p>
+						</div>
+					</button>
 					</div>
 				</aside>
 
