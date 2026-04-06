@@ -14,6 +14,7 @@ import {
 } from "../services/appointmentApi";
 import { completePayment, initiatePayment } from "../services/paymentApi";
 import { fetchDoctors, fetchMyProfile, saveMyPatientProfile } from "../services/authApi";
+import { addMedicalReport, getMedicalReportsForPatient } from "../services/medicalReportStore";
 
 const INITIAL_FORM_STATE = {
 	patientName: "",
@@ -36,6 +37,7 @@ const INITIAL_REPORT_STATE = {
 	patientName: "",
 	reportTitle: "",
 	reportType: "",
+	doctorId: "",
 	doctorName: "",
 	hospitalLabName: "",
 	reportDate: "",
@@ -321,6 +323,17 @@ function PatientDashboardPage() {
 	const specialties = DOCTOR_SPECIALIZATIONS;
 
 	const doctorsForSelectedSpecialty = doctors.filter((doctor) => doctor.specialty === formData.specialty);
+	const reportDoctorOptions = doctors
+		.filter((doctor) => doctor?.name)
+		.map((doctor) => ({
+			id: doctor.id,
+			name: doctor.name,
+			specialty: doctor.specialty,
+		}));
+
+	useEffect(() => {
+		setMedicalReports(getMedicalReportsForPatient(user.id));
+	}, [user.id]);
 
 	const loadSlots = async (doctorId, date) => {
 		if (!doctorId || !date) {
@@ -703,6 +716,17 @@ function PatientDashboardPage() {
 			return;
 		}
 
+		if (!reportFormData.doctorId) {
+			setReportError("Please select a doctor.");
+			return;
+		}
+
+		const selectedDoctor = reportDoctorOptions.find((doctor) => doctor.id === reportFormData.doctorId);
+		if (!selectedDoctor) {
+			setReportError("Selected doctor is not available. Please choose again.");
+			return;
+		}
+
 		if (!reportFormData.file) {
 			setReportError("Please upload a report file before submitting.");
 			return;
@@ -725,10 +749,12 @@ function PatientDashboardPage() {
 		const reportEntry = {
 			id: `${Date.now()}`,
 			reportId: generateReportId(),
+			patientUserId: user.id || "",
 			patientName: reportPatientName,
 			reportTitle: reportFormData.reportTitle,
 			reportType: reportFormData.reportType,
-			doctorName: reportFormData.doctorName,
+			doctorId: selectedDoctor.id,
+			doctorName: selectedDoctor.name,
 			hospitalLabName: reportFormData.hospitalLabName,
 			reportDate: reportFormData.reportDate,
 			notes: reportFormData.notes,
@@ -737,6 +763,7 @@ function PatientDashboardPage() {
 			uploadedAt: new Date().toISOString(),
 		};
 
+		addMedicalReport(reportEntry);
 		setMedicalReports((prev) => [reportEntry, ...prev]);
 		setReportFormData({
 			...INITIAL_REPORT_STATE,
@@ -800,12 +827,15 @@ function PatientDashboardPage() {
 	};
 
 	useEffect(() => {
-		if (activeMenuItem !== "Appointments") {
+		if (activeMenuItem !== "Appointments" && activeMenuItem !== "Medical Reports") {
 			return;
 		}
 
 		loadDoctors();
-		loadAppointments();
+
+		if (activeMenuItem === "Appointments") {
+			loadAppointments();
+		}
 	}, [activeMenuItem]);
 
 	useEffect(() => {
@@ -1290,18 +1320,31 @@ function PatientDashboardPage() {
 
 					<div className="grid gap-3 sm:grid-cols-2">
 						<div>
-							<label htmlFor="doctorName" className="mb-1 block text-xs font-semibold text-slate-600">
-								Doctor Name
+							<label htmlFor="doctorId" className="mb-1 block text-xs font-semibold text-slate-600">
+								Doctor
 							</label>
-							<input
-								id="doctorName"
-								name="doctorName"
+							<select
+								id="doctorId"
+								name="doctorId"
 								required
-								value={reportFormData.doctorName}
+								value={reportFormData.doctorId}
 								onChange={handleReportChange}
-								placeholder="Dr. Jane Smith"
+								disabled={isLoadingDoctors || reportDoctorOptions.length === 0}
 								className="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
-							/>
+							>
+								<option value="">
+									{isLoadingDoctors
+										? "Loading doctors..."
+										: reportDoctorOptions.length === 0
+											? "No doctors available"
+											: "Select doctor"}
+								</option>
+								{reportDoctorOptions.map((doctor) => (
+									<option key={doctor.id} value={doctor.id}>
+										{doctor.name}{doctor.specialty ? ` (${doctor.specialty})` : ""}
+									</option>
+								))}
+							</select>
 						</div>
 
 						<div>

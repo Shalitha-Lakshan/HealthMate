@@ -4,7 +4,7 @@ import { clearAuthStorage, getStoredUser } from "../utils/auth";
 
 const menuByRole = {
 	patient: ["Overview", "Appointments", "Medical Reports", "Telemedicine", "AI Assistant"],
-	doctor: ["Overview", "Schedule", "Consultations", "Prescriptions", "Telemedicine"],
+	doctor: ["Overview", "Schedule", "Consultations", "Prescriptions", "Medical Reports", "Telemedicine"],
 	admin: ["Overview", "User Management", "Doctor Verification", "Appointment Management", "Payment Management", "Operations"],
 };
 
