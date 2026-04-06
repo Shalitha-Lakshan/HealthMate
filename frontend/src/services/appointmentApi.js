@@ -47,18 +47,8 @@ export const completeConsultation = async (appointmentId) => {
 	return response.data;
 };
 
-export const approveDoctorAppointment = async (appointmentId) => {
-	const response = await appointmentApi.patch(`/${appointmentId}/doctor-approve`);
-	return response.data;
-};
-
-export const rejectDoctorAppointment = async (appointmentId) => {
-	const response = await appointmentApi.patch(`/${appointmentId}/doctor-reject`);
-	return response.data;
-};
-
-export const cancelDoctorAppointment = async (appointmentId) => {
-	const response = await appointmentApi.patch(`/${appointmentId}/doctor-cancel`);
+export const deleteExpiredAppointment = async (appointmentId) => {
+	const response = await appointmentApi.delete(`/${appointmentId}`);
 	return response.data;
 };
 
