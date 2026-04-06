@@ -56,3 +56,18 @@ export const updateCurrentUserProfile = async (payload) => {
 
 	return response.data;
 };
+
+export const uploadMedicalReport = async (payload) => {
+	const response = await api.post("/reports", payload);
+	return response.data;
+};
+
+export const fetchMyMedicalReports = async () => {
+	const response = await api.get("/reports/me");
+	return response.data;
+};
+
+export const fetchDoctorMedicalReports = async () => {
+	const response = await api.get("/reports/doctor");
+	return response.data;
+};

@@ -13,7 +13,13 @@ import {
 	fetchMyAppointments,
 } from "../services/appointmentApi";
 import { completePayment, initiatePayment } from "../services/paymentApi";
-import { fetchDoctors, fetchMyProfile, saveMyPatientProfile } from "../services/authApi";
+import {
+	fetchDoctors,
+	fetchMyMedicalReports,
+	fetchMyProfile,
+	saveMyPatientProfile,
+	uploadMedicalReport,
+} from "../services/authApi";
 
 const INITIAL_FORM_STATE = {
 	patientName: "",
@@ -36,6 +42,7 @@ const INITIAL_REPORT_STATE = {
 	patientName: "",
 	reportTitle: "",
 	reportType: "",
+	doctorId: "",
 	doctorName: "",
 	hospitalLabName: "",
 	reportDate: "",
@@ -252,6 +259,21 @@ function PatientDashboardPage() {
 		}
 	};
 
+	const loadMyMedicalReports = async ({ showError = true } = {}) => {
+		if (showError) {
+			setReportError("");
+		}
+
+		try {
+			const response = await fetchMyMedicalReports();
+			setMedicalReports(response.reports || []);
+		} catch (error) {
+			if (showError) {
+				setReportError(error.response?.data?.message || "Failed to load medical reports.");
+			}
+		}
+	};
+
 	const loadProfile = async () => {
 		setIsLoadingProfile(true);
 		setProfileError("");
@@ -321,6 +343,13 @@ function PatientDashboardPage() {
 	const specialties = DOCTOR_SPECIALIZATIONS;
 
 	const doctorsForSelectedSpecialty = doctors.filter((doctor) => doctor.specialty === formData.specialty);
+	const reportDoctorOptions = doctors
+		.filter((doctor) => doctor?.name)
+		.map((doctor) => ({
+			id: doctor.id,
+			name: doctor.name,
+			specialty: doctor.specialty,
+		}));
 
 	const loadSlots = async (doctorId, date) => {
 		if (!doctorId || !date) {
@@ -687,7 +716,15 @@ function PatientDashboardPage() {
 		}
 	};
 
-	const handleReportSubmit = (event) => {
+	const convertFileToDataUrl = (file) =>
+		new Promise((resolve, reject) => {
+			const reader = new FileReader();
+			reader.onload = () => resolve(String(reader.result || ""));
+			reader.onerror = () => reject(new Error("Failed to read uploaded file."));
+			reader.readAsDataURL(file);
+		});
+
+	const handleReportSubmit = async (event) => {
 		event.preventDefault();
 		setReportError("");
 		setReportSuccess("");
@@ -703,8 +740,24 @@ function PatientDashboardPage() {
 			return;
 		}
 
+		if (!reportFormData.doctorId) {
+			setReportError("Please select a doctor.");
+			return;
+		}
+
+		const selectedDoctor = reportDoctorOptions.find((doctor) => doctor.id === reportFormData.doctorId);
+		if (!selectedDoctor) {
+			setReportError("Selected doctor is not available. Please choose again.");
+			return;
+		}
+
 		if (!reportFormData.file) {
 			setReportError("Please upload a report file before submitting.");
+			return;
+		}
+
+		if (reportFormData.file.size > 4 * 1024 * 1024) {
+			setReportError("Report file must be 4MB or smaller.");
 			return;
 		}
 
@@ -722,27 +775,36 @@ function PatientDashboardPage() {
 			return;
 		}
 
-		const reportEntry = {
-			id: `${Date.now()}`,
-			reportId: generateReportId(),
-			patientName: reportPatientName,
-			reportTitle: reportFormData.reportTitle,
-			reportType: reportFormData.reportType,
-			doctorName: reportFormData.doctorName,
-			hospitalLabName: reportFormData.hospitalLabName,
-			reportDate: reportFormData.reportDate,
-			notes: reportFormData.notes,
-			fileName: reportFormData.file.name,
-			fileSize: reportFormData.file.size,
-			uploadedAt: new Date().toISOString(),
-		};
+		try {
+			const fileData = await convertFileToDataUrl(reportFormData.file);
+			const response = await uploadMedicalReport({
+				patientName: reportPatientName,
+				reportTitle: reportFormData.reportTitle,
+				reportType: reportFormData.reportType,
+				doctorId: selectedDoctor.id,
+				hospitalLabName: reportFormData.hospitalLabName,
+				reportDate: reportFormData.reportDate,
+				notes: reportFormData.notes,
+				fileName: reportFormData.file.name,
+				fileSize: reportFormData.file.size,
+				fileData,
+			});
 
-		setMedicalReports((prev) => [reportEntry, ...prev]);
-		setReportFormData({
-			...INITIAL_REPORT_STATE,
-			patientName: user.name || "",
-		});
-		setReportSuccess("Medical report saved successfully.");
+			const uploadedReport = response.report;
+			if (uploadedReport) {
+				setMedicalReports((prev) => [uploadedReport, ...prev]);
+			} else {
+				await loadMyMedicalReports({ showError: false });
+			}
+
+			setReportFormData({
+				...INITIAL_REPORT_STATE,
+				patientName: user.name || "",
+			});
+			setReportSuccess("Medical report uploaded successfully.");
+		} catch (error) {
+			setReportError(error.response?.data?.message || error.message || "Failed to upload medical report.");
+		}
 	};
 
 	const handleConfirmPayment = async () => {
@@ -800,12 +862,18 @@ function PatientDashboardPage() {
 	};
 
 	useEffect(() => {
-		if (activeMenuItem !== "Appointments") {
+		if (activeMenuItem !== "Appointments" && activeMenuItem !== "Medical Reports") {
 			return;
 		}
 
 		loadDoctors();
-		loadAppointments();
+
+		if (activeMenuItem === "Appointments") {
+			loadAppointments();
+			return;
+		}
+
+		loadMyMedicalReports();
 	}, [activeMenuItem]);
 
 	useEffect(() => {
@@ -1290,18 +1358,31 @@ function PatientDashboardPage() {
 
 					<div className="grid gap-3 sm:grid-cols-2">
 						<div>
-							<label htmlFor="doctorName" className="mb-1 block text-xs font-semibold text-slate-600">
-								Doctor Name
+							<label htmlFor="doctorId" className="mb-1 block text-xs font-semibold text-slate-600">
+								Doctor
 							</label>
-							<input
-								id="doctorName"
-								name="doctorName"
+							<select
+								id="doctorId"
+								name="doctorId"
 								required
-								value={reportFormData.doctorName}
+								value={reportFormData.doctorId}
 								onChange={handleReportChange}
-								placeholder="Dr. Jane Smith"
+								disabled={isLoadingDoctors || reportDoctorOptions.length === 0}
 								className="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
-							/>
+							>
+								<option value="">
+									{isLoadingDoctors
+										? "Loading doctors..."
+										: reportDoctorOptions.length === 0
+											? "No doctors available"
+											: "Select doctor"}
+								</option>
+								{reportDoctorOptions.map((doctor) => (
+									<option key={doctor.id} value={doctor.id}>
+										{doctor.name}{doctor.specialty ? ` (${doctor.specialty})` : ""}
+									</option>
+								))}
+							</select>
 						</div>
 
 						<div>

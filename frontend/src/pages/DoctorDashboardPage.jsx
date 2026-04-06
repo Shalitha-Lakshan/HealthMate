@@ -4,6 +4,7 @@ import DoctorTelemedicinePage from "./DoctorTelemedicinePage";
 import DoctorSchedulePage from "./DoctorSchedulePage";
 import DoctorConsultationsPage from "./DoctorConsultationsPage";
 import DoctorPrescriptionsPage from "./DoctorPrescriptionsPage";
+import DoctorMedicalReportsPage from "./DoctorMedicalReportsPage";
 import { getStoredUser } from "../utils/auth";
 import { updateCurrentUserProfile } from "../services/authApi";
 import { DOCTOR_SPECIALIZATIONS } from "../constants/doctorSpecializations";
@@ -178,6 +179,8 @@ function DoctorDashboardPage() {
 				<DoctorConsultationsPage />
 			) : activeMenuItem === "Prescriptions" ? (
 				<DoctorPrescriptionsPage />
+			) : activeMenuItem === "Medical Reports" ? (
+				<DoctorMedicalReportsPage />
 			) : activeMenuItem === "Profile" ? (
 				<div className="grid gap-5 lg:grid-cols-[1.3fr_1fr]">
 					<section className="overflow-hidden rounded-2xl border border-slate-200 bg-white">

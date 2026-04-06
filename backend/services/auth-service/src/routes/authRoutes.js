@@ -6,11 +6,14 @@ const {
 	getDoctorBookingEligibility,
 	getMyProfile,
 	upsertMyPatientProfile,
-} = require("../controllers/authController");
-const { requireAuth } = require("../middlewares/authMiddleware");
 	updateCurrentUserProfile,
 } = require("../controllers/authController");
-const { verifyAccessToken } = require("../middlewares/authMiddleware");
+const {
+	createMedicalReport,
+	getMyMedicalReports,
+	getAssignedMedicalReports,
+} = require("../controllers/medicalReportController");
+const { requireAuth, verifyAccessToken } = require("../middlewares/authMiddleware");
 
 const router = express.Router();
 
@@ -21,5 +24,8 @@ router.get("/me", requireAuth, getMyProfile);
 router.put("/me/profile", requireAuth, upsertMyPatientProfile);
 router.get("/internal/doctors/:doctorId/eligibility", getDoctorBookingEligibility);
 router.patch("/me", verifyAccessToken, updateCurrentUserProfile);
+router.post("/reports", requireAuth, createMedicalReport);
+router.get("/reports/me", requireAuth, getMyMedicalReports);
+router.get("/reports/doctor", requireAuth, getAssignedMedicalReports);
 
 module.exports = router;
