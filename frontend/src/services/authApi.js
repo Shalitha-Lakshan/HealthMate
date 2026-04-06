@@ -1,6 +1,5 @@
 import axios from "axios";
 import {
-	addMedicalReport,
 	deleteMedicalReportById,
 	getMedicalReportsForDoctor,
 	getMedicalReportsForPatient,
@@ -62,12 +61,6 @@ const getUserId = (user = {}) => {
 	return "";
 };
 
-const buildLocalReportId = () => {
-	const timestampPart = Date.now().toString(36).toUpperCase();
-	const randomPart = Math.random().toString(36).slice(2, 6).toUpperCase();
-	return `RPT-${timestampPart}${randomPart}`;
-};
-
 export const registerUser = async (payload) => {
 	const response = await api.post("/register", payload);
 	return response.data;
@@ -111,39 +104,8 @@ export const updateCurrentUserProfile = async (payload) => {
 };
 
 export const uploadMedicalReport = async (payload) => {
-	try {
-		const response = await api.post("/reports", payload);
-		return response.data;
-	} catch (error) {
-		if (!shouldUseMedicalReportFallback(error)) {
-			throw error;
-		}
-
-		const user = getStoredUser();
-		const fallbackReport = {
-			id: `local-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`,
-			reportId: buildLocalReportId(),
-			patientId: getUserId(user),
-			patientName: payload.patientName,
-			reportTitle: payload.reportTitle,
-			reportType: payload.reportType,
-			doctorId: payload.doctorId,
-			doctorName: payload.doctorName || "",
-			hospitalLabName: payload.hospitalLabName,
-			reportDate: payload.reportDate,
-			notes: payload.notes || "",
-			fileName: payload.fileName,
-			fileSize: Number(payload.fileSize) || 0,
-			fileData: payload.fileData,
-			uploadedAt: new Date().toISOString(),
-		};
-
-		addMedicalReport(fallbackReport);
-		return {
-			message: "medical report uploaded locally",
-			report: fallbackReport,
-		};
-	}
+	const response = await api.post("/reports", payload);
+	return response.data;
 };
 
 export const fetchMyMedicalReports = async () => {
