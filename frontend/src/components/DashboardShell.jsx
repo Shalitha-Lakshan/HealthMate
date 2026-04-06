@@ -53,6 +53,8 @@ function DashboardShell({ role = "patient", title, subtitle, children, onMenuCha
 
 		const destination = dashboardPathByRole[role] || "/dashboard";
 		navigate(destination, { state: { activeMenuItem: item } });
+	};
+
 	const handleOpenProfile = () => {
 		setActiveMenuItem("Profile");
 		if (typeof onMenuChange === "function") {
