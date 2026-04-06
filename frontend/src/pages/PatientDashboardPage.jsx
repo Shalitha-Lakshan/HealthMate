@@ -18,6 +18,7 @@ import {
 	fetchMyMedicalReports,
 	fetchMyProfile,
 	saveMyPatientProfile,
+	deleteMedicalReport,
 	uploadMedicalReport,
 } from "../services/authApi";
 
@@ -153,6 +154,23 @@ const getMinReportInputDate = () => {
 	return `${year}-${month}-${day}`;
 };
 
+const normalizeId = (value) => {
+	if (!value) {
+		return "";
+	}
+
+	if (typeof value === "object") {
+		if (typeof value.$oid === "string") {
+			return value.$oid;
+		}
+		if (typeof value.toString === "function" && value.toString !== Object.prototype.toString) {
+			return value.toString();
+		}
+	}
+
+	return String(value);
+};
+
 function PatientDashboardPage() {
 	const navigate = useNavigate();
 	const location = useLocation();
@@ -191,6 +209,7 @@ function PatientDashboardPage() {
 	const [isLoadingProfile, setIsLoadingProfile] = useState(false);
 	const [isSavingProfile, setIsSavingProfile] = useState(false);
 	const [deletingAppointmentId, setDeletingAppointmentId] = useState("");
+	const [deletingReportId, setDeletingReportId] = useState("");
 	const [availableSlots, setAvailableSlots] = useState([]);
 	const [reservedAppointment, setReservedAppointment] = useState(null);
 	const [profileFormData, setProfileFormData] = useState({
@@ -346,7 +365,7 @@ function PatientDashboardPage() {
 	const reportDoctorOptions = doctors
 		.filter((doctor) => doctor?.name)
 		.map((doctor) => ({
-			id: doctor.id,
+			id: normalizeId(doctor.id || doctor._id),
 			name: doctor.name,
 			specialty: doctor.specialty,
 		}));
@@ -402,7 +421,9 @@ function PatientDashboardPage() {
 		}
 
 		if (name === "doctorId") {
-			const selectedDoctor = doctorsForSelectedSpecialty.find((doctor) => doctor.id === value);
+			const selectedDoctor = doctorsForSelectedSpecialty.find(
+				(doctor) => normalizeId(doctor.id || doctor._id) === normalizeId(value)
+			);
 			setFormData((prev) => ({
 				...prev,
 				doctorId: value,
@@ -745,7 +766,9 @@ function PatientDashboardPage() {
 			return;
 		}
 
-		const selectedDoctor = reportDoctorOptions.find((doctor) => doctor.id === reportFormData.doctorId);
+		const selectedDoctor = reportDoctorOptions.find(
+			(doctor) => normalizeId(doctor.id) === normalizeId(reportFormData.doctorId)
+		);
 		if (!selectedDoctor) {
 			setReportError("Selected doctor is not available. Please choose again.");
 			return;
@@ -781,7 +804,8 @@ function PatientDashboardPage() {
 				patientName: reportPatientName,
 				reportTitle: reportFormData.reportTitle,
 				reportType: reportFormData.reportType,
-				doctorId: selectedDoctor.id,
+				doctorId: normalizeId(selectedDoctor.id),
+				doctorName: selectedDoctor.name,
 				hospitalLabName: reportFormData.hospitalLabName,
 				reportDate: reportFormData.reportDate,
 				notes: reportFormData.notes,
@@ -858,6 +882,27 @@ function PatientDashboardPage() {
 			setErrorMessage(error.response?.data?.message || "Failed to delete expired appointment.");
 		} finally {
 			setDeletingAppointmentId("");
+		}
+	};
+
+	const handleDeleteReport = async (reportId) => {
+		const shouldDelete = window.confirm("Delete this uploaded report?");
+		if (!shouldDelete) {
+			return;
+		}
+
+		setReportError("");
+		setReportSuccess("");
+		setDeletingReportId(reportId);
+
+		try {
+			await deleteMedicalReport(reportId);
+			setMedicalReports((prev) => prev.filter((report) => report.id !== reportId));
+			setReportSuccess("Medical report deleted successfully.");
+		} catch (error) {
+			setReportError(error.response?.data?.message || "Failed to delete medical report.");
+		} finally {
+			setDeletingReportId("");
 		}
 	};
 
@@ -1507,6 +1552,14 @@ function PatientDashboardPage() {
 										className="rounded-lg bg-blue-600 px-3 py-1.5 text-xs font-semibold text-white transition hover:bg-blue-700"
 									>
 										Download PDF
+									</button>
+									<button
+										type="button"
+										onClick={() => handleDeleteReport(report.id)}
+										disabled={deletingReportId === report.id}
+										className="rounded-lg bg-rose-600 px-3 py-1.5 text-xs font-semibold text-white transition hover:bg-rose-700 disabled:cursor-not-allowed disabled:bg-rose-300"
+									>
+										{deletingReportId === report.id ? "Deleting..." : "Delete"}
 									</button>
 								</div>
 							</div>

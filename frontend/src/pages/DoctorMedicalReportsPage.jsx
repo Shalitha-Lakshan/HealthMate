@@ -1,5 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { fetchDoctorMedicalReports } from "../services/authApi";
+import { deleteMedicalReportByIdentity, getMedicalReportsForDoctor } from "../services/medicalReportStore";
+import { getStoredUser } from "../utils/auth";
 
 const formatDateTime = (value) => {
 	if (!value) {
@@ -32,22 +34,75 @@ const formatFileSize = (bytes) => {
 	return `${(bytes / (1024 * 1024)).toFixed(2)} MB`;
 };
 
+const getUserId = (user = {}) => {
+	if (typeof user.id === "string" && user.id.trim()) {
+		return user.id;
+	}
+
+	if (typeof user._id === "string" && user._id.trim()) {
+		return user._id;
+	}
+
+	if (typeof user.sub === "string" && user.sub.trim()) {
+		return user.sub;
+	}
+
+	if (user.id && typeof user.id === "object" && typeof user.id.toString === "function") {
+		return user.id.toString();
+	}
+
+	if (user._id && typeof user._id === "object" && typeof user._id.toString === "function") {
+		return user._id.toString();
+	}
+
+	return "";
+};
+
 function DoctorMedicalReportsPage() {
 	const [reports, setReports] = useState([]);
 	const [isLoading, setIsLoading] = useState(false);
 	const [errorMessage, setErrorMessage] = useState("");
+	const [actionMessage, setActionMessage] = useState("");
 
 	const loadReports = async () => {
 		setIsLoading(true);
 		setErrorMessage("");
+		setActionMessage("");
 		try {
 			const response = await fetchDoctorMedicalReports();
 			setReports(response.reports || []);
 		} catch (error) {
-			setErrorMessage(error.response?.data?.message || "Failed to load medical reports.");
+			const storedUser = getStoredUser() || {};
+			const localReports = getMedicalReportsForDoctor({
+				doctorId: getUserId(storedUser),
+				doctorName: storedUser.name,
+			});
+
+			if (localReports.length > 0) {
+				setReports(localReports);
+				setErrorMessage("");
+			} else {
+				setErrorMessage(error.response?.data?.message || "Failed to load medical reports.");
+			}
 		} finally {
 			setIsLoading(false);
 		}
+	};
+
+	const handleRemoveFromDoctorView = (report) => {
+		const confirmed = window.confirm("Remove this report from doctor medical reports list?");
+		if (!confirmed) {
+			return;
+		}
+
+		deleteMedicalReportByIdentity({ id: report.id || report._id, reportId: report.reportId });
+		setReports((prev) =>
+			prev.filter(
+				(item) =>
+					(item.id || item._id) !== (report.id || report._id) && String(item.reportId || "") !== String(report.reportId || "")
+			)
+		);
+		setActionMessage(`Removed report ${report.reportId || ""} from this device.`.trim());
 	};
 
 	useEffect(() => {
@@ -86,6 +141,9 @@ function DoctorMedicalReportsPage() {
 			<section className="rounded-2xl border border-slate-200 bg-slate-50 p-5">
 				<h2 className="text-sm font-semibold text-slate-900">Patient Medical Reports</h2>
 				<p className="mt-1 text-xs text-slate-500">Only reports assigned to your profile are shown here.</p>
+				{actionMessage ? (
+					<p className="mt-3 rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-700">{actionMessage}</p>
+				) : null}
 
 				{errorMessage ? (
 					<p className="mt-4 rounded-xl border border-red-200 bg-red-50 px-3 py-4 text-sm text-red-700">{errorMessage}</p>
@@ -125,6 +183,13 @@ function DoctorMedicalReportsPage() {
 									</a>
 								) : null}
 								{report.notes ? <p className="mt-2 text-xs text-slate-600">Notes: {report.notes}</p> : null}
+								<button
+									type="button"
+									onClick={() => handleRemoveFromDoctorView(report)}
+									className="mt-3 inline-flex rounded-lg border border-red-200 bg-red-50 px-3 py-1.5 text-xs font-semibold text-red-700 transition hover:bg-red-100"
+								>
+									Remove
+								</button>
 							</div>
 						))}
 					</div>
