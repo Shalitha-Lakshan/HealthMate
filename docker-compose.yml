@@ -123,9 +123,16 @@ services:
     environment:
       - VITE_AUTH_API_URL=http://localhost:5001/api/auth
       - VITE_APPOINTMENT_API_URL=http://localhost:5004/api/appointments
+      - VITE_PRESCRIPTION_API_URL=http://localhost:5008/api/prescriptions
       - VITE_DOCTOR_SERVICE_URL=http://localhost:5003/api/doctors
       - VITE_PAYMENT_API_URL=http://localhost:5005/api/payments
       - VITE_ADMIN_API_URL=http://localhost:5009/api/admin
+      - CHOKIDAR_USEPOLLING=true
+    dns:
+      - 8.8.8.8
+    volumes:
+      - ./frontend:/app
+      - /app/node_modules
     depends_on:
       - gateway
     restart: unless-stopped

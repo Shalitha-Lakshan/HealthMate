@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { clearAuthStorage, getStoredUser } from "../utils/auth";
 
@@ -8,22 +8,61 @@ const menuByRole = {
 	admin: ["Overview", "User Management", "Doctor Verification", "Appointment Management", "Payment Management", "Operations"],
 };
 
-function DashboardShell({ role = "patient", title, subtitle, children, onMenuChange, initialActiveMenuItem }) {
+function DashboardShell({ role = "patient", title, subtitle, children, onMenuChange, initialActiveMenuItem, activeMenuItem: externalActiveMenuItem }) {
 	const navigate = useNavigate();
 	const user = getStoredUser() || {};
 	const [isSidebarOpen, setIsSidebarOpen] = useState(false);
+	const profileName = user.name || "User";
+	const profilePhoto = user.profilePhoto || "";
+	const profileInitials = profileName
+		.split(" ")
+		.filter(Boolean)
+		.slice(0, 2)
+		.map((part) => part[0]?.toUpperCase())
+		.join("") || "U";
 
 	const menuItems = useMemo(() => menuByRole[role] || menuByRole.patient, [role]);
 	const defaultMenuItem = initialActiveMenuItem || menuItems[0] || "Overview";
 	const [activeMenuItem, setActiveMenuItem] = useState(defaultMenuItem);
+
+	useEffect(() => {
+		if (typeof externalActiveMenuItem === "string" && externalActiveMenuItem !== activeMenuItem) {
+			setActiveMenuItem(externalActiveMenuItem);
+		}
+	}, [externalActiveMenuItem, activeMenuItem]);
 
 	const handleLogout = () => {
 		clearAuthStorage();
 		navigate("/login");
 	};
 
+	const handleMenuItemClick = (item) => {
+		setActiveMenuItem(item);
+
+		if (typeof onMenuChange === "function") {
+			onMenuChange(item);
+			setIsSidebarOpen(false);
+			return;
+		}
+
+		const dashboardPathByRole = {
+			patient: "/dashboard/patient",
+			doctor: "/dashboard/doctor",
+			admin: "/dashboard/admin",
+		};
+
+		const destination = dashboardPathByRole[role] || "/dashboard";
+		navigate(destination, { state: { activeMenuItem: item } });
+	const handleOpenProfile = () => {
+		setActiveMenuItem("Profile");
+		if (typeof onMenuChange === "function") {
+			onMenuChange("Profile");
+		}
+		setIsSidebarOpen(false);
+	};
+
 	return (
-		<div className="h-screen bg-slate-100/80 px-4 py-4 sm:px-6 lg:px-8 lg:py-6">
+		<div className="h-screen bg-blue-50 px-4 py-4 sm:px-6 lg:px-8 lg:py-6">
 			<div className="grid h-full w-full gap-6 lg:grid-cols-[280px_1fr]">
 				{isSidebarOpen && (
 					<button
@@ -35,10 +74,11 @@ function DashboardShell({ role = "patient", title, subtitle, children, onMenuCha
 				)}
 
 				<aside
-					className={`fixed inset-y-4 left-4 z-40 w-70 rounded-3xl border border-slate-200 bg-white p-5 shadow-sm transition-transform duration-200 lg:static lg:inset-auto lg:w-auto lg:translate-x-0 ${
+					className={`fixed inset-y-4 left-4 z-40 flex w-70 flex-col rounded-3xl border border-blue-100 bg-blue-50/80 p-5 shadow-sm transition-transform duration-200 lg:static lg:inset-auto lg:w-auto lg:translate-x-0 ${
 						isSidebarOpen ? "translate-x-0" : "-translate-x-[120%]"
 					}`}
 				>
+					<div className="flex h-full flex-col">
 					<div className="flex items-center gap-3 border-b border-slate-200 pb-5">
 						<div className="flex h-10 w-10 items-center justify-center rounded-xl bg-blue-600 text-sm font-bold text-white shadow-sm">
 							H
@@ -49,18 +89,12 @@ function DashboardShell({ role = "patient", title, subtitle, children, onMenuCha
 						</div>
 					</div>
 
-					<nav className="mt-5 space-y-2">
+					<nav className="mt-5 flex-1 space-y-2">
 						{menuItems.map((item) => (
 							<button
 								type="button"
 								key={item}
-								onClick={() => {
-									setActiveMenuItem(item);
-									if (typeof onMenuChange === "function") {
-										onMenuChange(item);
-									}
-									setIsSidebarOpen(false);
-								}}
+								onClick={() => handleMenuItemClick(item)}
 								className={`flex items-center justify-between rounded-xl px-3 py-2.5 text-sm font-medium transition ${
 									activeMenuItem === item
 										? "bg-blue-50 text-blue-700"
@@ -73,13 +107,48 @@ function DashboardShell({ role = "patient", title, subtitle, children, onMenuCha
 						))}
 					</nav>
 
-					<div className="mt-6 rounded-2xl border border-slate-200 bg-slate-50 p-4">
+					<div className="mt-6 rounded-2xl border border-blue-100 bg-blue-50/70 p-4">
 						<p className="text-xs uppercase tracking-wide text-slate-500">Signed In As</p>
 						<p className="mt-2 text-sm font-semibold text-slate-900">{user.name || "User"}</p>
 						<p className="mt-1 text-xs text-slate-500">{user.email || "No email"}</p>
 						<p className="mt-3 inline-flex rounded-lg bg-slate-200 px-2 py-1 text-[11px] font-semibold uppercase text-slate-700">
 							{user.role || role}
 						</p>
+					</div>
+
+					{role === "patient" && (
+						<button
+							type="button"
+							onClick={() => {
+								navigate("/dashboard/patient/profile");
+								setIsSidebarOpen(false);
+							}}
+							className="mt-4 w-full rounded-xl bg-blue-600 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-blue-700"
+						>
+							Profile
+						</button>
+					)}
+					<button
+						type="button"
+						onClick={handleOpenProfile}
+						className="mt-auto flex w-full items-center gap-3 rounded-2xl border border-slate-200 bg-slate-50 p-3 text-left transition hover:border-blue-200 hover:bg-blue-50"
+					>
+						{profilePhoto ? (
+							<img
+								src={profilePhoto}
+								alt="Profile"
+								className="h-11 w-11 rounded-xl border border-slate-200 object-cover"
+							/>
+						) : (
+							<div className="flex h-11 w-11 items-center justify-center rounded-xl bg-slate-900 text-xs font-bold text-white">
+								{profileInitials}
+							</div>
+						)}
+						<div className="min-w-0">
+							<p className="truncate text-sm font-semibold text-slate-900">{profileName}</p>
+							<p className="text-xs text-slate-500">Open Profile</p>
+						</div>
+					</button>
 					</div>
 				</aside>
 
@@ -95,24 +164,8 @@ function DashboardShell({ role = "patient", title, subtitle, children, onMenuCha
 						<p className="text-xs text-slate-500 capitalize">{role} workspace</p>
 					</div>
 
-					<div className="mb-5 flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-slate-200 bg-slate-50 p-3 sm:p-4">
-						<div className="flex items-center gap-2">
-							<span className="inline-flex rounded-lg bg-white px-2.5 py-1 text-xs font-semibold text-slate-700">
-								Live
-							</span>
-							<span className="text-xs text-slate-500">System status stable</span>
-						</div>
-						<p className="text-xs text-slate-500">{new Date().toLocaleString()}</p>
-					</div>
-
 					<header className="flex flex-wrap items-center justify-between gap-4 border-b border-slate-200 pb-5">
 						<div>
-							<p className="mb-2 text-xs font-medium capitalize text-slate-500">
-								{role} / {activeMenuItem}
-							</p>
-							<p className="text-xs font-semibold uppercase tracking-wide text-blue-600">
-								{role} dashboard
-							</p>
 							<h1 className="mt-1 text-2xl font-bold text-slate-900 sm:text-3xl">{title}</h1>
 							<p className="mt-2 text-sm text-slate-600">{subtitle}</p>
 						</div>

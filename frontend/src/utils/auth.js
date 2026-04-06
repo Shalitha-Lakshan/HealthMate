@@ -22,3 +22,7 @@ export const clearAuthStorage = () => {
 	localStorage.removeItem("healthmate_token");
 	localStorage.removeItem("healthmate_user");
 };
+
+export const setStoredUser = (user) => {
+	localStorage.setItem("healthmate_user", JSON.stringify(user));
+};

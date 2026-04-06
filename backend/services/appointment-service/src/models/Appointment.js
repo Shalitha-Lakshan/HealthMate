@@ -43,8 +43,8 @@ const appointmentSchema = new mongoose.Schema(
 		patientAge: {
 			type: Number,
 			required: true,
-			min: 0,
-			max: 120,
+			min: 1,
+			max: 150,
 		},
 		doctorId: {
 			type: String,
@@ -97,7 +97,7 @@ const appointmentSchema = new mongoose.Schema(
 		},
 		reason: {
 			type: String,
-			required: true,
+			default: "",
 			trim: true,
 			maxlength: 500,
 		},
