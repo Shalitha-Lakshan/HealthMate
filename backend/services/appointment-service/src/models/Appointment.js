@@ -113,7 +113,7 @@ const appointmentSchema = new mongoose.Schema(
 				"payment_failed",
 				"expired",
 			],
-			default: "pending_payment",
+			default: "pending",
 		},
 		paymentStatus: {
 			type: String,
