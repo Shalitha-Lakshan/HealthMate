@@ -39,6 +39,9 @@ export const fetchMyProfile = async () => {
 
 export const saveMyPatientProfile = async (payload) => {
 	const response = await api.put("/me/profile", payload);
+	return response.data;
+};
+
 export const updateCurrentUserProfile = async (payload) => {
 	const token = localStorage.getItem("healthmate_token");
 	if (!token) {

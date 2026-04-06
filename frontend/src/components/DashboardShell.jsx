@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { clearAuthStorage, getStoredUser } from "../utils/auth";
 
@@ -25,11 +25,10 @@ function DashboardShell({ role = "patient", title, subtitle, children, onMenuCha
 	const defaultMenuItem = initialActiveMenuItem || menuItems[0] || "Overview";
 	const [activeMenuItem, setActiveMenuItem] = useState(defaultMenuItem);
 
-	useEffect(() => {
-		if (typeof externalActiveMenuItem === "string" && externalActiveMenuItem !== activeMenuItem) {
-			setActiveMenuItem(externalActiveMenuItem);
-		}
-	}, [externalActiveMenuItem, activeMenuItem]);
+	const resolvedActiveMenuItem =
+		typeof externalActiveMenuItem === "string" && externalActiveMenuItem.length > 0
+			? externalActiveMenuItem
+			: activeMenuItem;
 
 	const handleLogout = () => {
 		clearAuthStorage();
@@ -53,6 +52,8 @@ function DashboardShell({ role = "patient", title, subtitle, children, onMenuCha
 
 		const destination = dashboardPathByRole[role] || "/dashboard";
 		navigate(destination, { state: { activeMenuItem: item } });
+	};
+
 	const handleOpenProfile = () => {
 		setActiveMenuItem("Profile");
 		if (typeof onMenuChange === "function") {
@@ -96,13 +97,15 @@ function DashboardShell({ role = "patient", title, subtitle, children, onMenuCha
 								key={item}
 								onClick={() => handleMenuItemClick(item)}
 								className={`flex items-center justify-between rounded-xl px-3 py-2.5 text-sm font-medium transition ${
-									activeMenuItem === item
+									resolvedActiveMenuItem === item
 										? "bg-blue-50 text-blue-700"
 										: "text-slate-600 hover:bg-slate-50"
 								}`}
 							>
 								{item}
-								{activeMenuItem === item && <span className="h-1.5 w-1.5 rounded-full bg-blue-600" />}
+								{resolvedActiveMenuItem === item && (
+									<span className="h-1.5 w-1.5 rounded-full bg-blue-600" />
+								)}
 							</button>
 						))}
 					</nav>
