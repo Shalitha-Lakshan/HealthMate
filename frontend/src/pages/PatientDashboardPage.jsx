@@ -989,7 +989,7 @@ function PatientDashboardPage() {
 				<img
 					src="/overview-banner.png"
 					alt="Health services banner"
-					className="h-60 w-full object-cover sm:h-72 lg:h-[30rem]"
+					className="h-60 w-full object-cover sm:h-72 lg:h-120"
 				/>
 				<button
 					type="button"

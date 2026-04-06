@@ -184,7 +184,7 @@ function DoctorDashboardPage() {
 			) : activeMenuItem === "Profile" ? (
 				<div className="grid gap-5 lg:grid-cols-[1.3fr_1fr]">
 					<section className="overflow-hidden rounded-2xl border border-slate-200 bg-white">
-						<div className="bg-gradient-to-r from-sky-700 via-blue-700 to-cyan-600 p-5 text-white">
+						<div className="bg-linear-to-r from-sky-700 via-blue-700 to-cyan-600 p-5 text-white">
 							<div className="mb-3 flex items-center gap-3">
 								{(profileForm.profilePhoto || user.profilePhoto) ? (
 									<img
