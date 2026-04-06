@@ -14,6 +14,22 @@ const AUTH_INTERNAL_TOKEN = process.env.AUTH_INTERNAL_TOKEN || "healthmate-inter
 const NOTIFICATION_SERVICE_URL = process.env.NOTIFICATION_SERVICE_URL || "http://localhost:5006/api/notifications";
 const NOTIFICATION_INTERNAL_TOKEN = process.env.NOTIFICATION_INTERNAL_TOKEN || "healthmate-internal-token";
 
+const getRequesterId = (user = {}) => {
+	if (user.sub) {
+		return String(user.sub);
+	}
+
+	if (user.id) {
+		return String(user.id);
+	}
+
+	if (user.userId) {
+		return String(user.userId);
+	}
+
+	return "";
+};
+
 const parseOptIn = (value, defaultValue = true) => {
 	if (value === undefined || value === null) {
 		return defaultValue;
@@ -292,6 +308,10 @@ const getAvailableSlots = async (req, res) => {
 const createAppointmentHold = async (req, res) => {
 	try {
 		await releaseExpiredPendingPayments();
+		const requesterId = getRequesterId(req.user);
+		if (!requesterId) {
+			return res.status(401).json({ message: "invalid token payload" });
+		}
 
 		const {
 			patientName,
@@ -373,7 +393,7 @@ const createAppointmentHold = async (req, res) => {
 		}
 
 		const appointment = await Appointment.create({
-			patientId: req.user.sub,
+			patientId: requesterId,
 			patientName: patientName.trim(),
 			patientEmail: req.user.email,
 			patientPhone: patientPhone.trim(),
@@ -408,7 +428,10 @@ const createAppointmentHold = async (req, res) => {
 const getMyAppointments = async (req, res) => {
 	try {
 		await releaseExpiredPendingPayments();
-		const patientId = req.user.sub;
+		const patientId = getRequesterId(req.user);
+		if (!patientId) {
+			return res.status(401).json({ message: "invalid token payload" });
+		}
 		const query = {
 			$or: [
 				{ patientId },
@@ -443,13 +466,17 @@ const approveAppointmentByDoctor = async (req, res) => {
 	try {
 		await releaseExpiredPendingPayments();
 		const { id } = req.params;
+		const requesterId = getRequesterId(req.user);
+		if (!requesterId) {
+			return res.status(401).json({ message: "invalid token payload" });
+		}
 
 		const appointment = await Appointment.findById(id);
 		if (!appointment) {
 			return res.status(404).json({ message: "appointment not found" });
 		}
 
-		if (String(appointment.doctorId) !== String(req.user.sub)) {
+		if (String(appointment.doctorId) !== requesterId) {
 			return res.status(403).json({ message: "you can only approve your own appointments" });
 		}
 
@@ -474,13 +501,17 @@ const approveAppointmentByDoctor = async (req, res) => {
 const rejectAppointmentByDoctor = async (req, res) => {
 	try {
 		const { id } = req.params;
+		const requesterId = getRequesterId(req.user);
+		if (!requesterId) {
+			return res.status(401).json({ message: "invalid token payload" });
+		}
 
 		const appointment = await Appointment.findById(id);
 		if (!appointment) {
 			return res.status(404).json({ message: "appointment not found" });
 		}
 
-		if (String(appointment.doctorId) !== String(req.user.sub)) {
+		if (String(appointment.doctorId) !== requesterId) {
 			return res.status(403).json({ message: "you can only reject your own appointments" });
 		}
 
@@ -505,13 +536,17 @@ const rejectAppointmentByDoctor = async (req, res) => {
 const cancelAppointmentByDoctor = async (req, res) => {
 	try {
 		const { id } = req.params;
+		const requesterId = getRequesterId(req.user);
+		if (!requesterId) {
+			return res.status(401).json({ message: "invalid token payload" });
+		}
 
 		const appointment = await Appointment.findById(id);
 		if (!appointment) {
 			return res.status(404).json({ message: "appointment not found" });
 		}
 
-		if (String(appointment.doctorId) !== String(req.user.sub)) {
+		if (String(appointment.doctorId) !== requesterId) {
 			return res.status(403).json({ message: "you can only cancel your own appointments" });
 		}
 
@@ -542,6 +577,10 @@ const confirmAppointmentPayment = async (req, res) => {
 		await releaseExpiredPendingPayments();
 		const { id } = req.params;
 		const { paymentMethod, paymentReference } = req.body;
+		const requesterId = getRequesterId(req.user);
+		if (!requesterId) {
+			return res.status(401).json({ message: "invalid token payload" });
+		}
 
 		if (!paymentMethod) {
 			return res.status(400).json({ message: "paymentMethod is required" });
@@ -552,7 +591,7 @@ const confirmAppointmentPayment = async (req, res) => {
 			return res.status(404).json({ message: "appointment not found" });
 		}
 
-		if (String(appointment.patientId) !== String(req.user.sub)) {
+		if (String(appointment.patientId) !== requesterId) {
 			return res.status(403).json({ message: "you can only pay for your own appointments" });
 		}
 
@@ -878,6 +917,10 @@ const deleteMyExpiredAppointment = async (req, res) => {
 	try {
 		await releaseExpiredPendingPayments();
 		const { id } = req.params;
+		const requesterId = getRequesterId(req.user);
+		if (!requesterId) {
+			return res.status(401).json({ message: "invalid token payload" });
+		}
 
 		if (!Types.ObjectId.isValid(id)) {
 			return res.status(400).json({ message: "invalid appointment id" });
@@ -888,7 +931,7 @@ const deleteMyExpiredAppointment = async (req, res) => {
 			return res.status(404).json({ message: "appointment not found" });
 		}
 
-		if (String(appointment.patientId) !== String(req.user.sub)) {
+		if (String(appointment.patientId) !== requesterId) {
 			return res.status(403).json({ message: "you can only delete your own appointments" });
 		}
 
@@ -940,13 +983,17 @@ const deleteAppointmentAdmin = async (req, res) => {
 const completeConsultation = async (req, res) => {
 	try {
 		const { id } = req.params;
+		const requesterId = getRequesterId(req.user);
+		if (!requesterId) {
+			return res.status(401).json({ message: "invalid token payload" });
+		}
 
 		const appointment = await Appointment.findById(id);
 		if (!appointment) {
 			return res.status(404).json({ message: "appointment not found" });
 		}
 
-		if (String(appointment.doctorId) !== String(req.user.sub)) {
+		if (String(appointment.doctorId) !== requesterId) {
 			return res.status(403).json({ message: "you can only complete your own consultations" });
 		}
 
