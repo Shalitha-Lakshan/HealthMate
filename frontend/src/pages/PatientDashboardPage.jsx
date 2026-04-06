@@ -154,6 +154,23 @@ const getMinReportInputDate = () => {
 	return `${year}-${month}-${day}`;
 };
 
+const normalizeId = (value) => {
+	if (!value) {
+		return "";
+	}
+
+	if (typeof value === "object") {
+		if (typeof value.$oid === "string") {
+			return value.$oid;
+		}
+		if (typeof value.toString === "function" && value.toString !== Object.prototype.toString) {
+			return value.toString();
+		}
+	}
+
+	return String(value);
+};
+
 function PatientDashboardPage() {
 	const navigate = useNavigate();
 	const location = useLocation();
@@ -348,7 +365,7 @@ function PatientDashboardPage() {
 	const reportDoctorOptions = doctors
 		.filter((doctor) => doctor?.name)
 		.map((doctor) => ({
-			id: doctor.id,
+			id: normalizeId(doctor.id || doctor._id),
 			name: doctor.name,
 			specialty: doctor.specialty,
 		}));
@@ -404,7 +421,9 @@ function PatientDashboardPage() {
 		}
 
 		if (name === "doctorId") {
-			const selectedDoctor = doctorsForSelectedSpecialty.find((doctor) => doctor.id === value);
+			const selectedDoctor = doctorsForSelectedSpecialty.find(
+				(doctor) => normalizeId(doctor.id || doctor._id) === normalizeId(value)
+			);
 			setFormData((prev) => ({
 				...prev,
 				doctorId: value,
@@ -747,7 +766,9 @@ function PatientDashboardPage() {
 			return;
 		}
 
-		const selectedDoctor = reportDoctorOptions.find((doctor) => doctor.id === reportFormData.doctorId);
+		const selectedDoctor = reportDoctorOptions.find(
+			(doctor) => normalizeId(doctor.id) === normalizeId(reportFormData.doctorId)
+		);
 		if (!selectedDoctor) {
 			setReportError("Selected doctor is not available. Please choose again.");
 			return;
@@ -783,7 +804,8 @@ function PatientDashboardPage() {
 				patientName: reportPatientName,
 				reportTitle: reportFormData.reportTitle,
 				reportType: reportFormData.reportType,
-				doctorId: selectedDoctor.id,
+				doctorId: normalizeId(selectedDoctor.id),
+				doctorName: selectedDoctor.name,
 				hospitalLabName: reportFormData.hospitalLabName,
 				reportDate: reportFormData.reportDate,
 				notes: reportFormData.notes,
