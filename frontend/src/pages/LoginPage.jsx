@@ -34,12 +34,12 @@ function LoginPage() {
 	return (
 		<AuthLayout
 			title="Welcome back"
-			subtitle="Sign in to continue managing healthcare workflows"
+			subtitle="Sign in to continue managing appointments and clinical workflows."
 			footerText="Don’t have an account?"
 			footerLink="/register"
 			footerLinkText="Create one"
 		>
-			<form className="space-y-4" onSubmit={handleSubmit}>
+			<form className="space-y-5" onSubmit={handleSubmit}>
 				<div>
 					<label className="mb-1.5 block text-sm font-medium text-slate-700" htmlFor="email">
 						Email
@@ -52,7 +52,7 @@ function LoginPage() {
 						value={formData.email}
 						onChange={handleChange}
 						placeholder="you@example.com"
-						className="w-full rounded-xl border border-slate-300 px-4 py-2.5 text-sm outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+						className="w-full rounded-xl border border-slate-300 bg-white px-4 py-2.5 text-sm text-slate-900 outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
 					/>
 				</div>
 
@@ -68,9 +68,13 @@ function LoginPage() {
 						value={formData.password}
 						onChange={handleChange}
 						placeholder="••••••••"
-						className="w-full rounded-xl border border-slate-300 px-4 py-2.5 text-sm outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+						className="w-full rounded-xl border border-slate-300 bg-white px-4 py-2.5 text-sm text-slate-900 outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
 					/>
 				</div>
+
+				<p className="text-xs text-slate-500">
+					Protected by role-based authentication and secure session tokens.
+				</p>
 
 				{errorMessage && (
 					<p className="rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
@@ -81,7 +85,7 @@ function LoginPage() {
 				<button
 					type="submit"
 					disabled={isLoading}
-					className="w-full rounded-xl bg-blue-600 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:bg-blue-300"
+					className="w-full rounded-xl bg-blue-600 px-4 py-3 text-sm font-semibold text-white shadow-md shadow-blue-200 transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:bg-blue-300"
 				>
 					{isLoading ? "Signing in..." : "Sign In"}
 				</button>

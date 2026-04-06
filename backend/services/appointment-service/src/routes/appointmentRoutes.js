@@ -7,6 +7,11 @@ const {
 	confirmAppointmentPayment,
 	confirmAppointmentPaymentInternal,
 	completeConsultation,
+	getAdminAppointments,
+	rescheduleAppointment,
+	cancelAppointment,
+	completeConsultationAdmin,
+	deleteAppointmentAdmin,
 } = require("../controllers/appointmentController");
 const { requireAuth, authorizeRoles } = require("../middlewares/authMiddleware");
 
@@ -16,8 +21,14 @@ router.post("/internal/payment-confirmation", confirmAppointmentPaymentInternal)
 
 router.use(requireAuth);
 
+router.get("/admin", authorizeRoles("admin"), getAdminAppointments);
+router.patch("/admin/:id/reschedule", authorizeRoles("admin"), rescheduleAppointment);
+router.patch("/admin/:id/cancel", authorizeRoles("admin"), cancelAppointment);
+router.patch("/admin/:id/complete", authorizeRoles("admin"), completeConsultationAdmin);
+router.delete("/admin/:id", authorizeRoles("admin"), deleteAppointmentAdmin);
+
 router.get("/my", authorizeRoles("patient"), getMyAppointments);
-router.get("/doctor", authorizeRoles("doctor"), getDoctorAppointments);
+router.get("/doctor/:doctorId", authorizeRoles("doctor"), getDoctorAppointments);
 router.get("/slots", authorizeRoles("patient"), getAvailableSlots);
 router.post("/hold", authorizeRoles("patient"), createAppointmentHold);
 router.post("/", authorizeRoles("patient"), createAppointmentHold);

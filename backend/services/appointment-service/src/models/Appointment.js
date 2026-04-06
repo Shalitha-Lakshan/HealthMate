@@ -16,7 +16,7 @@ const appointmentSchema = new mongoose.Schema(
 			immutable: true,
 		},
 		patientId: {
-			type: mongoose.Schema.Types.ObjectId,
+			type: String,
 			required: true,
 			index: true,
 		},
@@ -43,7 +43,7 @@ const appointmentSchema = new mongoose.Schema(
 			max: 120,
 		},
 		doctorId: {
-			type: mongoose.Schema.Types.ObjectId,
+			type: String,
 			required: true,
 			index: true,
 		},

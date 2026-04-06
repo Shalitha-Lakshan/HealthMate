@@ -20,6 +20,11 @@ export const fetchMyAppointments = async () => {
 	return response.data;
 };
 
+export const fetchDoctorAppointments = async (doctorId) => {
+	const response = await appointmentApi.get(`/doctor/${doctorId}`);
+	return response.data;
+};
+
 export const fetchAvailableSlots = async ({ doctorId, date }) => {
 	const response = await appointmentApi.get("/slots", {
 		params: { doctorId, date },
@@ -37,4 +42,34 @@ export const confirmAppointmentPayment = async (appointmentId, payload) => {
 	return response.data;
 };
 
+export const completeConsultation = async (appointmentId) => {
+	const response = await appointmentApi.patch(`/${appointmentId}/complete`);
+	return response.data;
+};
+
 export const createAppointment = createAppointmentHold;
+
+export const fetchAdminAppointments = async (params) => {
+	const response = await appointmentApi.get("/admin", { params });
+	return response.data;
+};
+
+export const rescheduleAdminAppointment = async (appointmentId, payload) => {
+	const response = await appointmentApi.patch(`/admin/${appointmentId}/reschedule`, payload);
+	return response.data;
+};
+
+export const cancelAdminAppointment = async (appointmentId) => {
+	const response = await appointmentApi.patch(`/admin/${appointmentId}/cancel`);
+	return response.data;
+};
+
+export const completeAdminAppointment = async (appointmentId) => {
+	const response = await appointmentApi.patch(`/admin/${appointmentId}/complete`);
+	return response.data;
+};
+
+export const deleteAdminAppointment = async (appointmentId) => {
+	const response = await appointmentApi.delete(`/admin/${appointmentId}`);
+	return response.data;
+};

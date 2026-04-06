@@ -1,0 +1,127 @@
+services:
+  auth-service:
+    build:
+      context: ./backend/services/auth-service
+    env_file:
+      - ./backend/services/auth-service/.env
+    ports:
+      - "5001:5001"
+    restart: unless-stopped
+
+  patient-service:
+    build:
+      context: ./backend/services/patient-service
+    env_file:
+      - ./backend/services/patient-service/.env
+    ports:
+      - "5002:5002"
+    restart: unless-stopped
+
+  doctor-service:
+    build:
+      context: ./backend/services/doctor-service
+    env_file:
+      - ./backend/services/doctor-service/.env
+    ports:
+      - "5003:5003"
+    restart: unless-stopped
+
+  appointment-service:
+    build:
+      context: ./backend/services/appointment-service
+    env_file:
+      - ./backend/services/appointment-service/.env
+    environment:
+      - AUTH_SERVICE_URL=http://auth-service:5001/api/auth
+      - NOTIFICATION_SERVICE_URL=http://notification-service:5006/api/notifications
+    ports:
+      - "5004:5004"
+    restart: unless-stopped
+
+  payment-service:
+    build:
+      context: ./backend/services/payment-service
+    env_file:
+      - ./backend/services/payment-service/.env
+    environment:
+      - APPOINTMENT_SERVICE_URL=http://appointment-service:5004/api/appointments
+    ports:
+      - "5005:5005"
+    restart: unless-stopped
+
+  notification-service:
+    build:
+      context: ./backend/services/notification-service
+    env_file:
+      - ./backend/services/notification-service/.env
+    ports:
+      - "5006:5006"
+    restart: unless-stopped
+
+  telemedicine-service:
+    build:
+      context: ./backend/services/telemedicine-service
+    env_file:
+      - ./backend/services/telemedicine-service/.env
+    ports:
+      - "5007:5007"
+    restart: unless-stopped
+
+  admin-service:
+    build:
+      context: ./backend/services/admin-service
+    env_file:
+      - ./backend/services/admin-service/.env
+    ports:
+      - "5009:5009"
+    restart: unless-stopped
+
+  ai-service:
+    build:
+      context: ./backend/services/ai-service
+    ports:
+      - "5010:5010"
+    restart: unless-stopped
+
+  gateway:
+    build:
+      context: ./backend/gateway
+    env_file:
+      - ./backend/gateway/.env
+    environment:
+      - AUTH_SERVICE_URL=http://auth-service:5001
+      - PATIENT_SERVICE_URL=http://patient-service:5002
+      - DOCTOR_SERVICE_URL=http://doctor-service:5003
+      - APPOINTMENT_SERVICE_URL=http://appointment-service:5004
+      - PAYMENT_SERVICE_URL=http://payment-service:5005
+      - NOTIFICATION_SERVICE_URL=http://notification-service:5006
+      - TELEMEDICINE_SERVICE_URL=http://telemedicine-service:5007
+      - ADMIN_SERVICE_URL=http://admin-service:5009
+    ports:
+      - "5000:5000"
+    depends_on:
+      - auth-service
+      - patient-service
+      - doctor-service
+      - appointment-service
+      - payment-service
+      - notification-service
+      - telemedicine-service
+      - admin-service
+      - ai-service
+    restart: unless-stopped
+
+  frontend:
+    build:
+      context: ./frontend
+    ports:
+      - "5173:5173"
+    environment:
+      - VITE_AUTH_API_URL=http://localhost:5001/api/auth
+      - VITE_APPOINTMENT_API_URL=http://localhost:5004/api/appointments
+      - VITE_DOCTOR_SERVICE_URL=http://localhost:5003/api/doctors
+      - VITE_PAYMENT_API_URL=http://localhost:5005/api/payments
+      - VITE_ADMIN_API_URL=http://localhost:5009/api/admin
+    depends_on:
+      - gateway
+    restart: unless-stopped
