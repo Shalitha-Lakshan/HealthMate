@@ -76,6 +76,18 @@ const sanitizeUser = (userDoc) => ({
 	phoneNumber: userDoc.phoneNumber,
 	role: userDoc.role,
 	accountStatus: userDoc.accountStatus || "active",
+	patientProfile:
+		userDoc.role === "patient"
+			? {
+				photoData: userDoc.patientProfile?.photoData || "",
+				dateOfBirth: userDoc.patientProfile?.dateOfBirth || null,
+				gender: userDoc.patientProfile?.gender || "",
+				bloodGroup: userDoc.patientProfile?.bloodGroup || "",
+				address: userDoc.patientProfile?.address || "",
+				emergencyContactName: userDoc.patientProfile?.emergencyContactName || "",
+				emergencyContactPhone: userDoc.patientProfile?.emergencyContactPhone || "",
+			}
+			: undefined,
 	doctorProfile:
 		userDoc.role === "doctor"
 			? {
@@ -213,6 +225,150 @@ const register = async (req, res) => {
 	}
 };
 
+const getMyProfile = async (req, res) => {
+	try {
+		const user = await User.findById(req.user.sub);
+		if (!user) {
+			return res.status(404).json({ message: "user not found" });
+		}
+
+		if (user.role === "patient" && !user.patientId) {
+			await assignPatientIdIfMissing(user);
+		}
+
+		return res.status(200).json({ user: sanitizeUser(user) });
+	} catch (error) {
+		return res.status(500).json({ message: "failed to fetch profile", error: error.message });
+	}
+};
+
+const upsertMyPatientProfile = async (req, res) => {
+	try {
+		const user = await User.findById(req.user.sub);
+		if (!user) {
+			return res.status(404).json({ message: "user not found" });
+		}
+
+		if (user.role !== "patient") {
+			return res.status(403).json({ message: "only patients can update patient profile" });
+		}
+
+		const { name, phoneNumber, patientProfile = {} } = req.body;
+
+		if (typeof name === "string") {
+			const trimmedName = name.trim();
+			if (!trimmedName) {
+				return res.status(400).json({ message: "name cannot be empty" });
+			}
+			user.name = trimmedName;
+		}
+
+		if (typeof phoneNumber === "string") {
+			const trimmedPhone = phoneNumber.trim();
+			if (!isValidPhoneNumber(trimmedPhone)) {
+				return res.status(400).json({ message: "invalid phone number format" });
+			}
+
+			if (trimmedPhone !== user.phoneNumber) {
+				const existingPhone = await User.findOne({ phoneNumber: trimmedPhone, _id: { $ne: user._id } });
+				if (existingPhone) {
+					return res.status(409).json({ message: "phone number already in use" });
+				}
+			}
+
+			user.phoneNumber = trimmedPhone;
+		}
+
+		const genderOptions = ["male", "female", "other", "prefer_not_to_say"];
+		if (patientProfile.gender !== undefined) {
+			if (patientProfile.gender && !genderOptions.includes(patientProfile.gender)) {
+				return res.status(400).json({ message: "invalid gender value" });
+			}
+			user.patientProfile = user.patientProfile || {};
+			user.patientProfile.gender = patientProfile.gender || undefined;
+		}
+
+		const bloodGroupOptions = ["A+", "A-", "B+", "B-", "AB+", "AB-", "O+", "O-"];
+		if (patientProfile.bloodGroup !== undefined) {
+			if (patientProfile.bloodGroup && !bloodGroupOptions.includes(patientProfile.bloodGroup)) {
+				return res.status(400).json({ message: "invalid blood group value" });
+			}
+			user.patientProfile = user.patientProfile || {};
+			user.patientProfile.bloodGroup = patientProfile.bloodGroup || undefined;
+		}
+
+		if (patientProfile.dateOfBirth !== undefined) {
+			user.patientProfile = user.patientProfile || {};
+			if (!patientProfile.dateOfBirth) {
+				user.patientProfile.dateOfBirth = undefined;
+			} else {
+				const normalizedDob = String(patientProfile.dateOfBirth).trim();
+				const parsedDob = new Date(`${normalizedDob}T00:00:00`);
+				const today = new Date();
+				today.setHours(0, 0, 0, 0);
+
+				const minAllowedDob = new Date(today);
+				minAllowedDob.setFullYear(minAllowedDob.getFullYear() - 140);
+
+				if (Number.isNaN(parsedDob.getTime()) || parsedDob > today || parsedDob < minAllowedDob) {
+					return res.status(400).json({
+						message: "dateOfBirth must be between today and the last 140 years",
+					});
+				}
+				user.patientProfile.dateOfBirth = parsedDob;
+			}
+		}
+
+		if (patientProfile.photoData !== undefined) {
+			user.patientProfile = user.patientProfile || {};
+			const normalizedPhotoData = (patientProfile.photoData || "").trim();
+			if (normalizedPhotoData) {
+				if (!normalizedPhotoData.startsWith("data:image/")) {
+					return res.status(400).json({ message: "invalid profile photo format" });
+				}
+				if (normalizedPhotoData.length > 2_000_000) {
+					return res.status(400).json({ message: "profile photo is too large" });
+				}
+				user.patientProfile.photoData = normalizedPhotoData;
+			} else {
+				user.patientProfile.photoData = undefined;
+			}
+		}
+
+		if (patientProfile.address !== undefined) {
+			user.patientProfile = user.patientProfile || {};
+			user.patientProfile.address = (patientProfile.address || "").trim() || undefined;
+		}
+
+		if (patientProfile.emergencyContactName !== undefined) {
+			user.patientProfile = user.patientProfile || {};
+			user.patientProfile.emergencyContactName = (patientProfile.emergencyContactName || "").trim() || undefined;
+		}
+
+		if (patientProfile.emergencyContactPhone !== undefined) {
+			user.patientProfile = user.patientProfile || {};
+			const emergencyPhone = (patientProfile.emergencyContactPhone || "").trim();
+			if (emergencyPhone && !isValidPhoneNumber(emergencyPhone)) {
+				return res.status(400).json({ message: "invalid emergency contact phone number format" });
+			}
+			user.patientProfile.emergencyContactPhone = emergencyPhone || undefined;
+		}
+
+		if (!user.patientId) {
+			await assignPatientIdIfMissing(user);
+		} else {
+			await user.save();
+		}
+
+		return res.status(200).json({
+			message: "patient profile updated successfully",
+			user: sanitizeUser(user),
+		});
+	} catch (error) {
+		return res.status(500).json({ message: "failed to update patient profile", error: error.message });
+	}
+};
+
 const login = async (req, res) => {
 	try {
 		const { email, password } = req.body;
@@ -332,4 +488,6 @@ module.exports = {
 	login,
 	getDoctors,
 	getDoctorBookingEligibility,
+	getMyProfile,
+	upsertMyPatientProfile,
 };

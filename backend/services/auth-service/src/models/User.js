@@ -70,6 +70,34 @@ const userSchema = new mongoose.Schema(
 				type: mongoose.Schema.Types.ObjectId,
 			},
 		},
+		patientProfile: {
+			photoData: {
+				type: String,
+			},
+			dateOfBirth: {
+				type: Date,
+			},
+			gender: {
+				type: String,
+				enum: ["male", "female", "other", "prefer_not_to_say"],
+			},
+			bloodGroup: {
+				type: String,
+				enum: ["A+", "A-", "B+", "B-", "AB+", "AB-", "O+", "O-"],
+			},
+			address: {
+				type: String,
+				trim: true,
+			},
+			emergencyContactName: {
+				type: String,
+				trim: true,
+			},
+			emergencyContactPhone: {
+				type: String,
+				trim: true,
+			},
+		},
 	},
 	{ timestamps: true }
 );

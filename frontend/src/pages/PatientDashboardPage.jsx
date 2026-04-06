@@ -1,17 +1,19 @@
 import { useEffect, useState } from "react";
+import { useLocation, useNavigate } from "react-router-dom";
 import { jsPDF } from "jspdf";
 import DashboardShell from "../components/DashboardShell";
 import PatientTelemedicinePage from "./PatientTelemedicinePage";
 import SymptomChatbot from "../components/SymptomChatbot";
 import { DOCTOR_SPECIALIZATIONS } from "../constants/doctorSpecializations";
-import { getStoredUser } from "../utils/auth";
+import { getStoredUser, setStoredUser } from "../utils/auth";
 import {
 	createAppointmentHold,
+	deleteExpiredAppointment,
 	fetchAvailableSlots,
 	fetchMyAppointments,
 } from "../services/appointmentApi";
 import { completePayment, initiatePayment } from "../services/paymentApi";
-import { fetchDoctors } from "../services/authApi";
+import { fetchDoctors, fetchMyProfile, saveMyPatientProfile } from "../services/authApi";
 
 const INITIAL_FORM_STATE = {
 	patientName: "",
@@ -41,6 +43,18 @@ const INITIAL_REPORT_STATE = {
 	file: null,
 };
 
+const INITIAL_PROFILE_STATE = {
+	name: "",
+	phoneNumber: "",
+	photoData: "",
+	dateOfBirth: "",
+	gender: "",
+	bloodGroup: "",
+	address: "",
+	emergencyContactName: "",
+	emergencyContactPhone: "",
+};
+
 const formatAppointmentDate = (value) => {
 	if (!value) {
 		return "Not scheduled";
@@ -60,11 +74,97 @@ const formatAppointmentDate = (value) => {
 	}).format(parsed);
 };
 
+const formatSlotTimeLabel = (slotTime) => {
+	if (!slotTime || typeof slotTime !== "string") {
+		return "N/A";
+	}
+
+	const normalized = slotTime.trim().toLowerCase();
+	if (/^\d{1,2}[:.]\d{2}\s?(am|pm)$/.test(normalized)) {
+		return normalized.replace(":", ".").replace(" ", "");
+	}
+
+	const match = normalized.match(/^(\d{1,2})[:.](\d{2})$/);
+	if (!match) {
+		return slotTime;
+	}
+
+	const hours = Number(match[1]);
+	const minutes = Number(match[2]);
+
+	if (Number.isNaN(hours) || Number.isNaN(minutes)) {
+		return slotTime;
+	}
+
+	const meridiem = hours >= 12 ? "pm" : "am";
+	const displayHours = hours % 12 || 12;
+	return `${displayHours}.${String(minutes).padStart(2, "0")}${meridiem}`;
+};
+
+const formatAppointmentSchedule = (appointmentDate, slotTime) => {
+	if (!appointmentDate) {
+		return formatSlotTimeLabel(slotTime);
+	}
+
+	const parsedDate = new Date(`${appointmentDate}T00:00:00`);
+	if (Number.isNaN(parsedDate.getTime())) {
+		return `${appointmentDate} • ${formatSlotTimeLabel(slotTime)}`;
+	}
+
+	const dateLabel = new Intl.DateTimeFormat("en-US", {
+		year: "numeric",
+		month: "short",
+		day: "numeric",
+	}).format(parsedDate);
+
+	return `${dateLabel}, ${formatSlotTimeLabel(slotTime)}`;
+};
+
+const getTodayInputDate = () => {
+	const now = new Date();
+	const year = now.getFullYear();
+	const month = String(now.getMonth() + 1).padStart(2, "0");
+	const day = String(now.getDate()).padStart(2, "0");
+	return `${year}-${month}-${day}`;
+};
+
+const getMaxAppointmentInputDate = () => {
+	const date = new Date();
+	date.setMonth(date.getMonth() + 3);
+	const year = date.getFullYear();
+	const month = String(date.getMonth() + 1).padStart(2, "0");
+	const day = String(date.getDate()).padStart(2, "0");
+	return `${year}-${month}-${day}`;
+};
+
+const getMinReportInputDate = () => {
+	const date = new Date();
+	date.setMonth(date.getMonth() - 1);
+	const year = date.getFullYear();
+	const month = String(date.getMonth() + 1).padStart(2, "0");
+	const day = String(date.getDate()).padStart(2, "0");
+	return `${year}-${month}-${day}`;
+};
+
 function PatientDashboardPage() {
+	const navigate = useNavigate();
+	const location = useLocation();
 	const user = getStoredUser() || {};
+	const minAppointmentDate = getTodayInputDate();
+	const maxAppointmentDate = getMaxAppointmentInputDate();
+	const minReportDate = getMinReportInputDate();
+	const maxReportDate = getTodayInputDate();
 	const [activeMenuItem, setActiveMenuItem] = useState(() => {
 		const paymentStatus = new URLSearchParams(window.location.search).get("payment");
-		return paymentStatus ? "Appointments" : "Overview";
+		if (paymentStatus) {
+			return "Appointments";
+		}
+
+		if (location.state?.activeMenuItem) {
+			return location.state.activeMenuItem;
+		}
+
+		return "Overview";
 	});
 	const [formData, setFormData] = useState({ ...INITIAL_FORM_STATE, patientName: user.name || "" });
 	const [reportFormData, setReportFormData] = useState({
@@ -81,8 +181,18 @@ function PatientDashboardPage() {
 	const [isLoadingSlots, setIsLoadingSlots] = useState(false);
 	const [isSubmitting, setIsSubmitting] = useState(false);
 	const [isPaying, setIsPaying] = useState(false);
+	const [isLoadingProfile, setIsLoadingProfile] = useState(false);
+	const [isSavingProfile, setIsSavingProfile] = useState(false);
+	const [deletingAppointmentId, setDeletingAppointmentId] = useState("");
 	const [availableSlots, setAvailableSlots] = useState([]);
 	const [reservedAppointment, setReservedAppointment] = useState(null);
+	const [profileFormData, setProfileFormData] = useState({
+		...INITIAL_PROFILE_STATE,
+		name: user.name || "",
+		phoneNumber: user.phoneNumber || "",
+	});
+	const [profileError, setProfileError] = useState("");
+	const [profileSuccess, setProfileSuccess] = useState("");
 	const [errorMessage, setErrorMessage] = useState("");
 	const [successMessage, setSuccessMessage] = useState("");
 
@@ -93,21 +203,38 @@ function PatientDashboardPage() {
 		{ label: "Reports", value: "08", meta: "Uploaded files" },
 	];
 
-	const upcomingAppointments = [
-		{ doctor: "Dr. Fernando", specialty: "Cardiology", time: "Today • 6:30 PM", status: "Confirmed" },
-		{ doctor: "Dr. Wijesinghe", specialty: "General Physician", time: "Tue • 9:00 AM", status: "Pending" },
-		{ doctor: "Dr. Perera", specialty: "Dermatology", time: "Fri • 3:15 PM", status: "Confirmed" },
-	];
+	const upcomingAppointments = appointments
+		.filter((appointment) => {
+			const status = String(appointment.status || "").toLowerCase();
+			if (["cancelled", "completed", "rejected", "expired", "payment_failed"].includes(status)) {
+				return false;
+			}
 
-	const loadAppointments = async () => {
-		setErrorMessage("");
+			const appointmentDateTime = new Date(
+				appointment.appointmentDateTime || `${appointment.appointmentDate || ""}T00:00:00`
+			);
+			if (Number.isNaN(appointmentDateTime.getTime())) {
+				return false;
+			}
+
+			return appointmentDateTime.getTime() >= Date.now();
+		})
+		.sort((a, b) => new Date(a.appointmentDateTime || a.appointmentDate) - new Date(b.appointmentDateTime || b.appointmentDate))
+		.slice(0, 5);
+
+	const loadAppointments = async ({ showError = true } = {}) => {
+		if (showError) {
+			setErrorMessage("");
+		}
 		setIsLoadingAppointments(true);
 
 		try {
 			const response = await fetchMyAppointments();
 			setAppointments(response.appointments || []);
 		} catch (error) {
-			setErrorMessage(error.response?.data?.message || "Failed to load appointments.");
+			if (showError) {
+				setErrorMessage(error.response?.data?.message || "Failed to load appointments.");
+			}
 		} finally {
 			setIsLoadingAppointments(false);
 		}
@@ -122,6 +249,72 @@ function PatientDashboardPage() {
 			setDoctors([]);
 		} finally {
 			setIsLoadingDoctors(false);
+		}
+	};
+
+	const loadProfile = async () => {
+		setIsLoadingProfile(true);
+		setProfileError("");
+
+		try {
+			const response = await fetchMyProfile();
+			const profileUser = response.user || {};
+			setStoredUser(profileUser);
+			setProfileFormData({
+				name: profileUser.name || "",
+				phoneNumber: profileUser.phoneNumber || "",
+				photoData: profileUser.patientProfile?.photoData || "",
+				dateOfBirth: profileUser.patientProfile?.dateOfBirth
+					? new Date(profileUser.patientProfile.dateOfBirth).toISOString().slice(0, 10)
+					: "",
+				gender: profileUser.patientProfile?.gender || "",
+				bloodGroup: profileUser.patientProfile?.bloodGroup || "",
+				address: profileUser.patientProfile?.address || "",
+				emergencyContactName: profileUser.patientProfile?.emergencyContactName || "",
+				emergencyContactPhone: profileUser.patientProfile?.emergencyContactPhone || "",
+			});
+		} catch (error) {
+			setProfileError(error.response?.data?.message || "Failed to load profile.");
+		} finally {
+			setIsLoadingProfile(false);
+		}
+	};
+
+	const handleProfileChange = (event) => {
+		const { name, value } = event.target;
+		setProfileFormData((prev) => ({ ...prev, [name]: value }));
+		setProfileError("");
+		setProfileSuccess("");
+	};
+
+	const handleProfileSave = async (event) => {
+		event.preventDefault();
+		setIsSavingProfile(true);
+		setProfileError("");
+		setProfileSuccess("");
+
+		try {
+			const payload = {
+				name: profileFormData.name,
+				phoneNumber: profileFormData.phoneNumber,
+				patientProfile: {
+					photoData: profileFormData.photoData || "",
+					dateOfBirth: profileFormData.dateOfBirth || "",
+					gender: profileFormData.gender,
+					bloodGroup: profileFormData.bloodGroup,
+					address: profileFormData.address,
+					emergencyContactName: profileFormData.emergencyContactName,
+					emergencyContactPhone: profileFormData.emergencyContactPhone,
+				},
+			};
+
+			const response = await saveMyPatientProfile(payload);
+			setStoredUser(response.user);
+			setProfileSuccess("Profile saved successfully.");
+		} catch (error) {
+			setProfileError(error.response?.data?.message || "Failed to save profile.");
+		} finally {
+			setIsSavingProfile(false);
 		}
 	};
 
@@ -148,6 +341,20 @@ function PatientDashboardPage() {
 
 	const handleAppointmentChange = (event) => {
 		const { name, value } = event.target;
+
+		if (name === "patientName") {
+			if (value === "") {
+				setFormData((prev) => ({ ...prev, patientName: "" }));
+				return;
+			}
+
+			if (!/^[A-Za-z ]+$/.test(value)) {
+				return;
+			}
+
+			setFormData((prev) => ({ ...prev, patientName: value }));
+			return;
+		}
 
 		if (name === "specialty") {
 			setFormData((prev) => ({
@@ -181,6 +388,25 @@ function PatientDashboardPage() {
 			return;
 		}
 
+		if (name === "patientAge") {
+			if (value === "") {
+				setFormData((prev) => ({ ...prev, patientAge: "" }));
+				return;
+			}
+
+			if (!/^\d+$/.test(value)) {
+				return;
+			}
+
+			const numericAge = Number(value);
+			if (numericAge < 1 || numericAge > 150) {
+				return;
+			}
+
+			setFormData((prev) => ({ ...prev, patientAge: value }));
+			return;
+		}
+
 		if (name === "appointmentDate") {
 			setFormData((prev) => ({ ...prev, appointmentDate: value, slotTime: "" }));
 			setReservedAppointment(null);
@@ -195,16 +421,124 @@ function PatientDashboardPage() {
 		setFormData((prev) => ({ ...prev, [name]: value }));
 	};
 
+	const handlePatientNameKeyDown = (event) => {
+		const allowedControlKeys = [
+			"Backspace",
+			"Delete",
+			"Tab",
+			"ArrowLeft",
+			"ArrowRight",
+			"Home",
+			"End",
+		];
+
+		if (allowedControlKeys.includes(event.key)) {
+			return;
+		}
+
+		if (!/^[A-Za-z ]$/.test(event.key)) {
+			event.preventDefault();
+		}
+	};
+
+	const handlePatientNamePaste = (event) => {
+		const pastedText = event.clipboardData.getData("text");
+		if (!/^[A-Za-z ]+$/.test(pastedText.trim())) {
+			event.preventDefault();
+		}
+	};
+
+	const handlePatientAgeKeyDown = (event) => {
+		const allowedControlKeys = [
+			"Backspace",
+			"Delete",
+			"Tab",
+			"ArrowLeft",
+			"ArrowRight",
+			"Home",
+			"End",
+		];
+
+		if (allowedControlKeys.includes(event.key)) {
+			return;
+		}
+
+		if (!/^\d$/.test(event.key)) {
+			event.preventDefault();
+			return;
+		}
+
+		const input = event.currentTarget;
+		const selectionStart = input.selectionStart ?? input.value.length;
+		const selectionEnd = input.selectionEnd ?? input.value.length;
+		const nextValue = `${input.value.slice(0, selectionStart)}${event.key}${input.value.slice(selectionEnd)}`;
+
+		if (!/^\d+$/.test(nextValue)) {
+			event.preventDefault();
+			return;
+		}
+
+		const numericAge = Number(nextValue);
+		if (numericAge < 1 || numericAge > 150) {
+			event.preventDefault();
+		}
+	};
+
+	const handlePatientAgePaste = (event) => {
+		const pastedText = event.clipboardData.getData("text").trim();
+		if (!/^\d+$/.test(pastedText)) {
+			event.preventDefault();
+			return;
+		}
+
+		const numericAge = Number(pastedText);
+		if (numericAge < 1 || numericAge > 150) {
+			event.preventDefault();
+		}
+	};
+
 	const handleCreateAppointment = async (event) => {
 		event.preventDefault();
 		setErrorMessage("");
 		setSuccessMessage("");
+
+		const patientName = formData.patientName.trim();
+		if (!/^[A-Za-z ]+$/.test(patientName)) {
+			setErrorMessage("Patient name can contain letters and spaces only.");
+			return;
+		}
+
+		const patientAge = Number(formData.patientAge);
+		if (!Number.isFinite(patientAge) || patientAge < 1 || patientAge > 150) {
+			setErrorMessage("Patient age must be between 1 and 150.");
+			return;
+		}
+
+		const selectedAppointmentDate = new Date(`${formData.appointmentDate}T00:00:00`);
+		const today = new Date();
+		today.setHours(0, 0, 0, 0);
+
+		if (
+			!formData.appointmentDate ||
+			Number.isNaN(selectedAppointmentDate.getTime()) ||
+			selectedAppointmentDate < today
+		) {
+			setErrorMessage("Appointment date cannot be in the past.");
+			return;
+		}
+
+		const maxBookableDate = new Date(`${maxAppointmentDate}T23:59:59`);
+		if (selectedAppointmentDate > maxBookableDate) {
+			setErrorMessage("Appointment date must be within 3 months from today.");
+			return;
+		}
+
 		setIsSubmitting(true);
 
 		try {
 			const payload = {
-				patientName: formData.patientName,
-				patientAge: Number(formData.patientAge),
+				patientName,
+				patientAge,
 				patientPhone: user.phoneNumber,
 				doctorId: formData.doctorId,
 				doctorName: formData.doctorName,
@@ -291,46 +625,6 @@ function PatientDashboardPage() {
 			doc.save(`${report.reportId || "medical-report"}.pdf`);
 		};
 
-		const printReport = (report) => {
-			const printWindow = window.open("", "_blank", "width=900,height=700");
-			if (!printWindow) {
-				setReportError("Unable to open print window. Please allow pop-ups and try again.");
-				return;
-			}
-
-			const reportHtml = `
-				<html>
-					<head>
-						<title>${report.reportId} - Medical Report</title>
-						<style>
-							body { font-family: Arial, sans-serif; padding: 24px; color: #1e293b; }
-							h1 { margin-bottom: 8px; }
-							p { margin: 8px 0; font-size: 14px; }
-							.label { font-weight: 700; }
-						</style>
-					</head>
-					<body>
-						<h1>HealthMate Medical Report</h1>
-						<p><span class="label">Report ID:</span> ${report.reportId}</p>
-						<p><span class="label">Patient Name:</span> ${report.patientName}</p>
-						<p><span class="label">Report Title:</span> ${report.reportTitle}</p>
-						<p><span class="label">Report Type:</span> ${report.reportType}</p>
-						<p><span class="label">Doctor Name:</span> ${report.doctorName}</p>
-						<p><span class="label">Hospital/Lab Name:</span> ${report.hospitalLabName}</p>
-						<p><span class="label">Report Date:</span> ${report.reportDate}</p>
-						<p><span class="label">Uploaded At:</span> ${formatAppointmentDate(report.uploadedAt)}</p>
-						<p><span class="label">Uploaded File:</span> ${report.fileName} (${formatFileSize(report.fileSize)})</p>
-						<p><span class="label">Notes:</span> ${report.notes || "N/A"}</p>
-					</body>
-				</html>
-			`;
-
-			printWindow.document.open();
-			printWindow.document.write(reportHtml);
-			printWindow.document.close();
-			printWindow.focus();
-			printWindow.print();
-		};
 
 	const handleReportChange = (event) => {
 		const { name, value, files } = event.target;
@@ -343,9 +637,54 @@ function PatientDashboardPage() {
 			return;
 		}
 
+		if (name === "patientName") {
+			if (value === "") {
+				setReportFormData((prev) => ({ ...prev, patientName: "" }));
+				setReportError("");
+				setReportSuccess("");
+				return;
+			}
+
+			if (!/^[A-Za-z ]+$/.test(value)) {
+				return;
+			}
+
+			setReportFormData((prev) => ({ ...prev, patientName: value }));
+			setReportError("");
+			setReportSuccess("");
+			return;
+		}
+
 		setReportFormData((prev) => ({ ...prev, [name]: value }));
 		setReportError("");
 		setReportSuccess("");
+	};
+
+	const handleReportPatientNameKeyDown = (event) => {
+		const allowedControlKeys = [
+			"Backspace",
+			"Delete",
+			"Tab",
+			"ArrowLeft",
+			"ArrowRight",
+			"Home",
+			"End",
+		];
+
+		if (allowedControlKeys.includes(event.key)) {
+			return;
+		}
+
+		if (!/^[A-Za-z ]$/.test(event.key)) {
+			event.preventDefault();
+		}
+	};
+
+	const handleReportPatientNamePaste = (event) => {
+		const pastedText = event.clipboardData.getData("text");
+		if (!/^[A-Za-z ]+$/.test(pastedText.trim())) {
+			event.preventDefault();
+		}
 	};
 
 	const handleReportSubmit = (event) => {
@@ -353,8 +692,14 @@ function PatientDashboardPage() {
 		setReportError("");
 		setReportSuccess("");
 
-		if (!reportFormData.patientName.trim()) {
+		const reportPatientName = reportFormData.patientName.trim();
+		if (!reportPatientName) {
 			setReportError("Please provide patient name.");
+			return;
+		}
+
+		if (!/^[A-Za-z ]+$/.test(reportPatientName)) {
+			setReportError("Patient name can contain letters and spaces only.");
 			return;
 		}
 
@@ -363,10 +708,24 @@ function PatientDashboardPage() {
 			return;
 		}
 
+		const selectedReportDate = new Date(`${reportFormData.reportDate}T00:00:00`);
+		const allowedMinDate = new Date(`${minReportDate}T00:00:00`);
+		const allowedMaxDate = new Date(`${maxReportDate}T23:59:59`);
+
+		if (
+			!reportFormData.reportDate ||
+			Number.isNaN(selectedReportDate.getTime()) ||
+			selectedReportDate < allowedMinDate ||
+			selectedReportDate > allowedMaxDate
+		) {
+			setReportError("Report date must be within the last 1 month and cannot be in the future.");
+			return;
+		}
+
 		const reportEntry = {
 			id: `${Date.now()}`,
 			reportId: generateReportId(),
-			patientName: reportFormData.patientName,
+			patientName: reportPatientName,
 			reportTitle: reportFormData.reportTitle,
 			reportType: reportFormData.reportType,
 			doctorName: reportFormData.doctorName,
@@ -419,6 +778,27 @@ function PatientDashboardPage() {
 		}
 	};
 
+	const handleDeleteExpiredAppointment = async (appointmentId) => {
+		const shouldDelete = window.confirm("Delete this expired appointment?");
+		if (!shouldDelete) {
+			return;
+		}
+
+		setErrorMessage("");
+		setSuccessMessage("");
+		setDeletingAppointmentId(appointmentId);
+
+		try {
+			await deleteExpiredAppointment(appointmentId);
+			setSuccessMessage("Expired appointment deleted.");
+			await loadAppointments();
+		} catch (error) {
+			setErrorMessage(error.response?.data?.message || "Failed to delete expired appointment.");
+		} finally {
+			setDeletingAppointmentId("");
+		}
+	};
+
 	useEffect(() => {
 		if (activeMenuItem !== "Appointments") {
 			return;
@@ -426,6 +806,15 @@ function PatientDashboardPage() {
 
 		loadDoctors();
 		loadAppointments();
+	}, [activeMenuItem]);
+
+	useEffect(() => {
+		if (activeMenuItem !== "Overview") {
+			return;
+		}
+
+		loadProfile();
+		loadAppointments({ showError: false });
 	}, [activeMenuItem]);
 
 	useEffect(() => {
@@ -478,74 +867,77 @@ function PatientDashboardPage() {
 
 	const renderOverview = () => (
 		<>
-			<div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-				{appointmentStats.map((item) => (
-					<div key={item.label} className="rounded-2xl border border-slate-200 bg-slate-50 p-5">
-						<p className="text-xs uppercase tracking-wide text-slate-500">{item.label}</p>
-						<p className="mt-2 text-2xl font-bold text-slate-900">{item.value}</p>
-						<p className="mt-1 text-xs text-slate-500">{item.meta}</p>
-					</div>
-				))}
-			</div>
+			<section className="relative overflow-hidden rounded-2xl border border-slate-200 bg-slate-100">
+				<img
+					src="/overview-banner.png"
+					alt="Health services banner"
+					className="h-60 w-full object-cover sm:h-72 lg:h-[30rem]"
+				/>
+				<button
+					type="button"
+					onClick={() => setActiveMenuItem("Appointments")}
+					className="absolute bottom-20 left-0 inline-flex items-stretch overflow-hidden rounded-md border border-slate-300 shadow-md transition hover:scale-[1.01] hover:shadow-lg sm:bottom-24 sm:left-6 lg:bottom-26"
+					aria-label="Go to booking appointment page"
+				>
+					<span className="bg-slate-800 px-3.5 py-1.5 text-sm font-medium text-white sm:px-5 sm:py-2.5 sm:text-base">
+						Book an Appointment
+					</span>
+					<span className="flex w-9 items-center justify-center bg-white text-xl font-bold text-slate-700 sm:w-10">
+						›
+					</span>
+				</button>
+			</section>
 
 			<div className="mt-5 grid gap-5 lg:grid-cols-[1.35fr_1fr]">
 				<section className="rounded-2xl border border-slate-200 bg-white p-5">
 					<div className="mb-4 flex items-center justify-between">
 						<h2 className="text-sm font-semibold text-slate-900">Upcoming Appointments</h2>
-						<button className="text-xs font-semibold text-blue-700">View all</button>
+						<button
+							type="button"
+							onClick={() => setActiveMenuItem("Appointments")}
+							className="text-xs font-semibold text-blue-700"
+						>
+							View all
+						</button>
 					</div>
-					<div className="space-y-3">
-						{upcomingAppointments.map((appointment) => (
-							<div
-								key={`${appointment.doctor}-${appointment.time}`}
-								className="rounded-xl border border-slate-200 bg-slate-50 p-4"
-							>
-								<div className="flex items-center justify-between gap-3">
-									<div>
-										<p className="text-sm font-semibold text-slate-900">{appointment.doctor}</p>
-										<p className="text-xs text-slate-500">{appointment.specialty}</p>
+					{isLoadingAppointments ? (
+						<p className="rounded-xl border border-dashed border-slate-300 bg-slate-50 px-3 py-4 text-sm text-slate-500">
+							Loading upcoming appointments...
+						</p>
+					) : upcomingAppointments.length === 0 ? (
+						<p className="rounded-xl border border-dashed border-slate-300 bg-slate-50 px-3 py-4 text-sm text-slate-500">
+							No upcoming appointments yet.
+						</p>
+					) : (
+						<div className="space-y-3">
+							{upcomingAppointments.map((appointment) => (
+								<div key={appointment._id || appointment.appointmentId} className="rounded-xl border border-slate-200 bg-slate-50 p-4">
+									<div className="flex items-center justify-between gap-3">
+										<div>
+											<p className="text-sm font-semibold text-slate-900">{appointment.doctorName}</p>
+											<p className="text-xs text-slate-500">{appointment.specialty}</p>
+										</div>
+										<span
+											className={`rounded-lg px-2 py-1 text-[11px] font-semibold uppercase ${
+												appointment.status === "confirmed"
+													? "bg-emerald-100 text-emerald-700"
+													: appointment.status === "pending_payment" || appointment.status === "pending"
+														? "bg-amber-100 text-amber-700"
+														: "bg-slate-200 text-slate-700"
+											}`}
+										>
+											{appointment.status}
+										</span>
 									</div>
-									<span
-										className={`rounded-lg px-2 py-1 text-[11px] font-semibold ${
-											appointment.status === "Confirmed"
-												? "bg-emerald-100 text-emerald-700"
-												: "bg-amber-100 text-amber-700"
-										}`}
-									>
-										{appointment.status}
-									</span>
+									<p className="mt-3 text-xs font-medium text-slate-600">
+										{formatAppointmentSchedule(appointment.appointmentDate, appointment.slotTime)}
+									</p>
 								</div>
-								<p className="mt-3 text-xs font-medium text-slate-600">{appointment.time}</p>
-							</div>
-						))}
-					</div>
-				</section>
-
-				<section className="space-y-5">
-					<div className="rounded-2xl border border-slate-200 bg-slate-50 p-5">
-						<h3 className="text-sm font-semibold text-slate-900">Profile Snapshot</h3>
-						<div className="mt-4 space-y-2 text-sm">
-							<p className="text-slate-700">
-								<span className="text-slate-500">Email:</span> {user.email || "N/A"}
-							</p>
-							<p className="text-slate-700">
-								<span className="text-slate-500">Phone:</span> {user.phoneNumber || "N/A"}
-							</p>
-							<p className="text-slate-700">
-								<span className="text-slate-500">Role:</span> {user.role || "patient"}
-							</p>
+							))}
 						</div>
-					</div>
-
-					<div className="rounded-2xl border border-slate-200 bg-blue-50 p-5">
-						<h3 className="text-sm font-semibold text-blue-900">Quick Actions</h3>
-						<ul className="mt-3 space-y-2 text-sm text-blue-800">
-							<li>• Book a new appointment</li>
-							<li>• Upload a new medical report</li>
-							<li>• Join upcoming telemedicine session</li>
-						</ul>
-					</div>
+					)}
 				</section>
+
 			</div>
 		</>
 	);
@@ -568,6 +960,8 @@ function PatientDashboardPage() {
 								required
 								value={formData.patientName}
 								onChange={handleAppointmentChange}
+								onKeyDown={handlePatientNameKeyDown}
+								onPaste={handlePatientNamePaste}
 								placeholder="Your full name"
 								className="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
 							/>
@@ -581,11 +975,13 @@ function PatientDashboardPage() {
 								id="patientAge"
 								name="patientAge"
 								type="number"
-								min="0"
-								max="120"
+								min="1"
+								max="150"
 								required
 								value={formData.patientAge}
 								onChange={handleAppointmentChange}
+								onKeyDown={handlePatientAgeKeyDown}
+								onPaste={handlePatientAgePaste}
 								placeholder="Age"
 								className="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
 							/>
@@ -647,6 +1043,8 @@ function PatientDashboardPage() {
 								id="appointmentDate"
 								name="appointmentDate"
 								type="date"
+								min={minAppointmentDate}
+								max={maxAppointmentDate}
 								required
 								value={formData.appointmentDate}
 								onChange={handleAppointmentChange}
@@ -705,7 +1103,6 @@ function PatientDashboardPage() {
 						<textarea
 							id="reason"
 							name="reason"
-							required
 							rows={4}
 							value={formData.reason}
 							onChange={handleAppointmentChange}
@@ -801,7 +1198,7 @@ function PatientDashboardPage() {
 									</span>
 								</div>
 								<p className="mt-3 text-xs font-medium text-slate-600">
-									{formatAppointmentDate(appointment.appointmentDateTime)}
+									{formatAppointmentSchedule(appointment.appointmentDate, appointment.slotTime)}
 								</p>
 								<p className="mt-2 text-xs text-slate-600">
 									Patient: {appointment.patientName} ({appointment.patientAge})
@@ -813,6 +1210,16 @@ function PatientDashboardPage() {
 									</p>
 								)}
 								<p className="mt-2 text-xs text-slate-600">Reason: {appointment.reason}</p>
+								{appointment.status === "expired" && (
+									<button
+										type="button"
+										onClick={() => handleDeleteExpiredAppointment(appointment._id)}
+										disabled={deletingAppointmentId === appointment._id}
+										className="mt-3 rounded-lg bg-rose-600 px-3 py-2 text-xs font-semibold text-white transition hover:bg-rose-700 disabled:cursor-not-allowed disabled:bg-rose-300"
+									>
+										{deletingAppointmentId === appointment._id ? "Deleting..." : "Delete Expired Appointment"}
+									</button>
+								)}
 							</div>
 						))}
 					</div>
@@ -838,6 +1245,8 @@ function PatientDashboardPage() {
 							required
 							value={reportFormData.patientName}
 							onChange={handleReportChange}
+							onKeyDown={handleReportPatientNameKeyDown}
+							onPaste={handleReportPatientNamePaste}
 							placeholder="John Doe"
 							className="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
 						/>
@@ -919,6 +1328,8 @@ function PatientDashboardPage() {
 							id="reportDate"
 							name="reportDate"
 							type="date"
+							min={minReportDate}
+							max={maxReportDate}
 							required
 							value={reportFormData.reportDate}
 							onChange={handleReportChange}
@@ -1011,13 +1422,6 @@ function PatientDashboardPage() {
 								<div className="mt-3 flex flex-wrap gap-2">
 									<button
 										type="button"
-										onClick={() => printReport(report)}
-										className="rounded-lg border border-slate-300 px-3 py-1.5 text-xs font-semibold text-slate-700 transition hover:bg-slate-100"
-									>
-										Print Report
-									</button>
-									<button
-										type="button"
 										onClick={() => downloadReportPdf(report)}
 										className="rounded-lg bg-blue-600 px-3 py-1.5 text-xs font-semibold text-white transition hover:bg-blue-700"
 									>
@@ -1040,7 +1444,7 @@ function PatientDashboardPage() {
 				setActiveMenuItem(menuItem);
 			}}
 			title={`Welcome, ${user.name || "Patient"}`}
-			subtitle="Manage appointments, reports, and telemedicine sessions."
+			subtitle="Track appointments, upload reports, and stay on top of your care plan from one place."
 		>
 			{activeMenuItem === "Medical Reports" ? (
 				renderMedicalReports()

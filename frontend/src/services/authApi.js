@@ -7,6 +7,14 @@ const api = axios.create({
 	},
 });
 
+api.interceptors.request.use((config) => {
+	const token = localStorage.getItem("healthmate_token");
+	if (token) {
+		config.headers.Authorization = `Bearer ${token}`;
+	}
+	return config;
+});
+
 export const registerUser = async (payload) => {
 	const response = await api.post("/register", payload);
 	return response.data;
@@ -21,5 +29,15 @@ export const fetchDoctors = async (specialty) => {
 	const response = await api.get("/doctors", {
 		params: specialty ? { specialty } : undefined,
 	});
+	return response.data;
+};
+
+export const fetchMyProfile = async () => {
+	const response = await api.get("/me");
+	return response.data;
+};
+
+export const saveMyPatientProfile = async (payload) => {
+	const response = await api.put("/me/profile", payload);
 	return response.data;
 };

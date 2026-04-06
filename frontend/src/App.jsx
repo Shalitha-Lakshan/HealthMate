@@ -4,6 +4,7 @@ import LandingPage from "./pages/LandingPage";
 import LoginPage from "./pages/LoginPage";
 import RegisterPage from "./pages/RegisterPage";
 import PatientDashboardPage from "./pages/PatientDashboardPage";
+import PatientProfilePage from "./pages/PatientProfilePage";
 import DoctorDashboardPage from "./pages/DoctorDashboardPage";
 import AdminDashboardPage from "./pages/AdminDashboardPage";
 import { getDashboardPathForRole, getStoredUser } from "./utils/auth";
@@ -55,6 +56,14 @@ function App() {
 					element={
 						<ProtectedRoute allowedRoles={["patient"]}>
 							<PatientDashboardPage />
+						</ProtectedRoute>
+					}
+				/>
+				<Route
+					path="/dashboard/patient/profile"
+					element={
+						<ProtectedRoute allowedRoles={["patient"]}>
+							<PatientProfilePage />
 						</ProtectedRoute>
 					}
 				/>

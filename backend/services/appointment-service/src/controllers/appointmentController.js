@@ -4,6 +4,8 @@ const Appointment = require("../models/Appointment");
 const SLOT_INTERVAL_MINUTES = 30;
 const SLOT_START_HOUR = 9;
 const SLOT_END_HOUR = 17;
+const APPOINTMENT_WINDOW_MONTHS = 3;
+const APPOINTMENT_TIMEZONE_OFFSET = process.env.APPOINTMENT_TIMEZONE_OFFSET || "+05:30";
 const PAYMENT_HOLD_MINUTES = Number(process.env.APPOINTMENT_PAYMENT_HOLD_MINUTES || 10);
 const DEFAULT_CONSULTATION_FEE = Number(process.env.DEFAULT_CONSULTATION_FEE || 3500);
 const APPOINTMENT_INTERNAL_TOKEN = process.env.APPOINTMENT_INTERNAL_TOKEN || "healthmate-internal-token";
@@ -25,7 +27,33 @@ const isValidTimeSlot = (timeValue) => {
 };
 
 const buildDateTime = (dateOnly, slotTime) => {
-	return new Date(`${dateOnly}T${slotTime}:00`);
+	return new Date(`${dateOnly}T${slotTime}:00${APPOINTMENT_TIMEZONE_OFFSET}`);
+};
+
+const getDateOnlyForOffset = (dateValue, timezoneOffset) => {
+	const offsetMatch = timezoneOffset.match(/^([+-])(\d{2}):(\d{2})$/);
+	if (!offsetMatch) {
+		return new Date(dateValue).toISOString().slice(0, 10);
+	}
+
+	const sign = offsetMatch[1] === "+" ? 1 : -1;
+	const hours = Number(offsetMatch[2]);
+	const minutes = Number(offsetMatch[3]);
+	const totalOffsetMinutes = sign * (hours * 60 + minutes);
+
+	const utcTime = new Date(dateValue).getTime();
+	const shifted = new Date(utcTime + totalOffsetMinutes * 60 * 1000);
+	const year = shifted.getUTCFullYear();
+	const month = String(shifted.getUTCMonth() + 1).padStart(2, "0");
+	const day = String(shifted.getUTCDate()).padStart(2, "0");
+	return `${year}-${month}-${day}`;
+};
+
+const getMaxBookableDate = () => {
+	const date = new Date();
+	date.setMonth(date.getMonth() + APPOINTMENT_WINDOW_MONTHS);
+	date.setHours(23, 59, 59, 999);
+	return date;
 };
 
 const generateSlots = () => {
@@ -194,7 +222,25 @@ const getAvailableSlots = async (req, res) => {
 			return res.status(400).json({ message: "invalid date format" });
 		}
 
+		const queryDate = new Date(`${normalizedDate}T00:00:00`);
+		if (Number.isNaN(queryDate.getTime())) {
+			return res.status(400).json({ message: "invalid date format" });
+		}
+
+		const now = new Date();
+		const today = new Date(now);
+		today.setHours(0, 0, 0, 0);
+		if (queryDate < today || queryDate > getMaxBookableDate()) {
+			return res
+				.status(400)
+				.json({ message: `date must be between today and ${APPOINTMENT_WINDOW_MONTHS} months from today` });
+		}
+
 		const allSlots = generateSlots();
+		const isTodayRequest = normalizedDate === getDateOnlyForOffset(now, APPOINTMENT_TIMEZONE_OFFSET);
+		const filteredSlots = isTodayRequest
+			? allSlots.filter((time) => buildDateTime(normalizedDate, time) > now)
+			: allSlots;
 
 		const existingAppointments = await Appointment.find({
 			doctorId,
@@ -204,7 +250,7 @@ const getAvailableSlots = async (req, res) => {
 
 		const bookedSlots = new Set(existingAppointments.map((item) => item.slotTime));
 
-		const slots = allSlots.map((time) => ({
+		const slots = filteredSlots.map((time) => ({
 			time,
 			available: !bookedSlots.has(time),
 		}));
@@ -248,18 +294,17 @@ const createAppointmentHold = async (req, res) => {
 			!doctorPhone ||
 			!specialty ||
 			!appointmentDate ||
-			!slotTime ||
-			!reason
+			!slotTime
 		) {
 			return res.status(400).json({
 				message:
-					"patientName, patientAge, patientPhone, doctorId, doctorName, doctorEmail, doctorPhone, specialty, appointmentDate, slotTime, and reason are required",
+					"patientName, patientAge, patientPhone, doctorId, doctorName, doctorEmail, doctorPhone, specialty, appointmentDate, and slotTime are required",
 			});
 		}
 
 		const parsedAge = Number(patientAge);
-		if (Number.isNaN(parsedAge) || parsedAge < 0 || parsedAge > 120) {
-			return res.status(400).json({ message: "patientAge must be a valid number between 0 and 120" });
+		if (Number.isNaN(parsedAge) || parsedAge < 1 || parsedAge > 150) {
+			return res.status(400).json({ message: "patientAge must be a valid number between 1 and 150" });
 		}
 
 		const doctorEligibility = await ensureDoctorIsBookable(doctorId);
@@ -283,6 +328,12 @@ const createAppointmentHold = async (req, res) => {
 
 		if (parsedDate <= new Date()) {
 			return res.status(400).json({ message: "appointment date and time must be in the future" });
+		}
+
+		if (parsedDate > getMaxBookableDate()) {
+			return res
+				.status(400)
+				.json({ message: `appointment date must be within ${APPOINTMENT_WINDOW_MONTHS} months from today` });
 		}
 
 		const conflictingAppointment = await Appointment.findOne({
@@ -313,7 +364,7 @@ const createAppointmentHold = async (req, res) => {
 			appointmentDate: normalizedDate,
 			slotTime,
 			mode: mode || "in-person",
-			reason: reason.trim(),
+			reason: typeof reason === "string" ? reason.trim() : "",
 			status: "pending_payment",
 			paymentStatus: "pending",
 			consultationFee: DEFAULT_CONSULTATION_FEE,
@@ -656,6 +707,39 @@ const completeConsultationAdmin = async (req, res) => {
 	}
 };
 
+const deleteMyExpiredAppointment = async (req, res) => {
+	try {
+		await releaseExpiredPendingPayments();
+		const { id } = req.params;
+
+		if (!Types.ObjectId.isValid(id)) {
+			return res.status(400).json({ message: "invalid appointment id" });
+		}
+
+		const appointment = await Appointment.findById(id);
+		if (!appointment) {
+			return res.status(404).json({ message: "appointment not found" });
+		}
+
+		if (String(appointment.patientId) !== String(req.user.sub)) {
+			return res.status(403).json({ message: "you can only delete your own appointments" });
+		}
+
+		if (appointment.status !== "expired") {
+			return res.status(400).json({ message: "only expired appointments can be deleted" });
+		}
+
+		await Appointment.deleteOne({ _id: id });
+
+		return res.status(200).json({
+			message: "expired appointment deleted successfully",
+			appointment: sanitizeAppointment(appointment),
+		});
+	} catch (error) {
+		return res.status(500).json({ message: "failed to delete expired appointment", error: error.message });
+	}
+};
+
 const deleteAppointmentAdmin = async (req, res) => {
 	try {
 		const { id } = req.params;
@@ -729,4 +813,5 @@ module.exports = {
 	cancelAppointment,
 	completeConsultationAdmin,
 	deleteAppointmentAdmin,
+	deleteMyExpiredAppointment,
 };
