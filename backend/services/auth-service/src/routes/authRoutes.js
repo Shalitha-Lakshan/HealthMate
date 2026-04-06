@@ -6,11 +6,9 @@ const {
 	getDoctorBookingEligibility,
 	getMyProfile,
 	upsertMyPatientProfile,
-} = require("../controllers/authController");
-const { requireAuth } = require("../middlewares/authMiddleware");
 	updateCurrentUserProfile,
 } = require("../controllers/authController");
-const { verifyAccessToken } = require("../middlewares/authMiddleware");
+const { requireAuth, verifyAccessToken } = require("../middlewares/authMiddleware");
 
 const router = express.Router();
 
