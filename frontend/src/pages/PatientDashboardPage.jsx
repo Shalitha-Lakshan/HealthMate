@@ -13,8 +13,13 @@ import {
 	fetchMyAppointments,
 } from "../services/appointmentApi";
 import { completePayment, initiatePayment } from "../services/paymentApi";
-import { fetchDoctors, fetchMyProfile, saveMyPatientProfile } from "../services/authApi";
-import { addMedicalReport, getMedicalReportsForPatient } from "../services/medicalReportStore";
+import {
+	fetchDoctors,
+	fetchMyMedicalReports,
+	fetchMyProfile,
+	saveMyPatientProfile,
+	uploadMedicalReport,
+} from "../services/authApi";
 
 const INITIAL_FORM_STATE = {
 	patientName: "",
@@ -254,6 +259,21 @@ function PatientDashboardPage() {
 		}
 	};
 
+	const loadMyMedicalReports = async ({ showError = true } = {}) => {
+		if (showError) {
+			setReportError("");
+		}
+
+		try {
+			const response = await fetchMyMedicalReports();
+			setMedicalReports(response.reports || []);
+		} catch (error) {
+			if (showError) {
+				setReportError(error.response?.data?.message || "Failed to load medical reports.");
+			}
+		}
+	};
+
 	const loadProfile = async () => {
 		setIsLoadingProfile(true);
 		setProfileError("");
@@ -330,10 +350,6 @@ function PatientDashboardPage() {
 			name: doctor.name,
 			specialty: doctor.specialty,
 		}));
-
-	useEffect(() => {
-		setMedicalReports(getMedicalReportsForPatient(user.id));
-	}, [user.id]);
 
 	const loadSlots = async (doctorId, date) => {
 		if (!doctorId || !date) {
@@ -700,7 +716,15 @@ function PatientDashboardPage() {
 		}
 	};
 
-	const handleReportSubmit = (event) => {
+	const convertFileToDataUrl = (file) =>
+		new Promise((resolve, reject) => {
+			const reader = new FileReader();
+			reader.onload = () => resolve(String(reader.result || ""));
+			reader.onerror = () => reject(new Error("Failed to read uploaded file."));
+			reader.readAsDataURL(file);
+		});
+
+	const handleReportSubmit = async (event) => {
 		event.preventDefault();
 		setReportError("");
 		setReportSuccess("");
@@ -732,6 +756,11 @@ function PatientDashboardPage() {
 			return;
 		}
 
+		if (reportFormData.file.size > 4 * 1024 * 1024) {
+			setReportError("Report file must be 4MB or smaller.");
+			return;
+		}
+
 		const selectedReportDate = new Date(`${reportFormData.reportDate}T00:00:00`);
 		const allowedMinDate = new Date(`${minReportDate}T00:00:00`);
 		const allowedMaxDate = new Date(`${maxReportDate}T23:59:59`);
@@ -746,30 +775,36 @@ function PatientDashboardPage() {
 			return;
 		}
 
-		const reportEntry = {
-			id: `${Date.now()}`,
-			reportId: generateReportId(),
-			patientUserId: user.id || "",
-			patientName: reportPatientName,
-			reportTitle: reportFormData.reportTitle,
-			reportType: reportFormData.reportType,
-			doctorId: selectedDoctor.id,
-			doctorName: selectedDoctor.name,
-			hospitalLabName: reportFormData.hospitalLabName,
-			reportDate: reportFormData.reportDate,
-			notes: reportFormData.notes,
-			fileName: reportFormData.file.name,
-			fileSize: reportFormData.file.size,
-			uploadedAt: new Date().toISOString(),
-		};
+		try {
+			const fileData = await convertFileToDataUrl(reportFormData.file);
+			const response = await uploadMedicalReport({
+				patientName: reportPatientName,
+				reportTitle: reportFormData.reportTitle,
+				reportType: reportFormData.reportType,
+				doctorId: selectedDoctor.id,
+				hospitalLabName: reportFormData.hospitalLabName,
+				reportDate: reportFormData.reportDate,
+				notes: reportFormData.notes,
+				fileName: reportFormData.file.name,
+				fileSize: reportFormData.file.size,
+				fileData,
+			});
 
-		addMedicalReport(reportEntry);
-		setMedicalReports((prev) => [reportEntry, ...prev]);
-		setReportFormData({
-			...INITIAL_REPORT_STATE,
-			patientName: user.name || "",
-		});
-		setReportSuccess("Medical report saved successfully.");
+			const uploadedReport = response.report;
+			if (uploadedReport) {
+				setMedicalReports((prev) => [uploadedReport, ...prev]);
+			} else {
+				await loadMyMedicalReports({ showError: false });
+			}
+
+			setReportFormData({
+				...INITIAL_REPORT_STATE,
+				patientName: user.name || "",
+			});
+			setReportSuccess("Medical report uploaded successfully.");
+		} catch (error) {
+			setReportError(error.response?.data?.message || error.message || "Failed to upload medical report.");
+		}
 	};
 
 	const handleConfirmPayment = async () => {
@@ -835,7 +870,10 @@ function PatientDashboardPage() {
 
 		if (activeMenuItem === "Appointments") {
 			loadAppointments();
+			return;
 		}
+
+		loadMyMedicalReports();
 	}, [activeMenuItem]);
 
 	useEffect(() => {

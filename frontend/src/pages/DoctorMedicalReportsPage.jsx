@@ -1,6 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { getStoredUser } from "../utils/auth";
-import { getMedicalReportsForDoctor } from "../services/medicalReportStore";
+import { fetchDoctorMedicalReports } from "../services/authApi";
 
 const formatDateTime = (value) => {
 	if (!value) {
@@ -34,21 +33,26 @@ const formatFileSize = (bytes) => {
 };
 
 function DoctorMedicalReportsPage() {
-	const doctor = getStoredUser() || {};
 	const [reports, setReports] = useState([]);
+	const [isLoading, setIsLoading] = useState(false);
+	const [errorMessage, setErrorMessage] = useState("");
 
-	const loadReports = () => {
-		setReports(
-			getMedicalReportsForDoctor({
-				doctorId: doctor.id,
-				doctorName: doctor.name,
-			})
-		);
+	const loadReports = async () => {
+		setIsLoading(true);
+		setErrorMessage("");
+		try {
+			const response = await fetchDoctorMedicalReports();
+			setReports(response.reports || []);
+		} catch (error) {
+			setErrorMessage(error.response?.data?.message || "Failed to load medical reports.");
+		} finally {
+			setIsLoading(false);
+		}
 	};
 
 	useEffect(() => {
 		loadReports();
-	}, [doctor.id, doctor.name]);
+	}, []);
 
 	const totalReports = reports.length;
 	const latestUpload = useMemo(() => {
@@ -83,7 +87,13 @@ function DoctorMedicalReportsPage() {
 				<h2 className="text-sm font-semibold text-slate-900">Patient Medical Reports</h2>
 				<p className="mt-1 text-xs text-slate-500">Only reports assigned to your profile are shown here.</p>
 
-				{reports.length === 0 ? (
+				{errorMessage ? (
+					<p className="mt-4 rounded-xl border border-red-200 bg-red-50 px-3 py-4 text-sm text-red-700">{errorMessage}</p>
+				) : isLoading ? (
+					<p className="mt-4 rounded-xl border border-dashed border-slate-300 bg-white px-3 py-4 text-sm text-slate-500">
+						Loading medical reports...
+					</p>
+				) : reports.length === 0 ? (
 					<p className="mt-4 rounded-xl border border-dashed border-slate-300 bg-white px-3 py-4 text-sm text-slate-500">
 						No medical reports have been assigned to you yet.
 					</p>
@@ -105,6 +115,15 @@ function DoctorMedicalReportsPage() {
 								<p className="mt-1 text-xs text-slate-600">
 									File: {report.fileName} ({formatFileSize(report.fileSize)})
 								</p>
+								{report.fileData ? (
+									<a
+										href={report.fileData}
+										download={report.fileName || "medical-report"}
+										className="mt-2 inline-flex rounded-lg bg-blue-600 px-3 py-1.5 text-xs font-semibold text-white transition hover:bg-blue-700"
+									>
+										Download File
+									</a>
+								) : null}
 								{report.notes ? <p className="mt-2 text-xs text-slate-600">Notes: {report.notes}</p> : null}
 							</div>
 						))}
