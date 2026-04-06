@@ -21,6 +21,16 @@ const isValidSLMCRegistration = (registrationNumber) => {
 	return slmcRegex.test(normalized);
 };
 
+const isValidProfilePhotoDataUrl = (photo = "") => {
+	const regex = /^data:image\/(png|jpe?g|webp);base64,[a-zA-Z0-9+/=\r\n]+$/;
+	return regex.test(photo);
+};
+
+const getDataUrlByteSize = (photo = "") => {
+	const base64Part = photo.split(",")[1] || "";
+	return Buffer.from(base64Part, "base64").length;
+};
+
 const PATIENT_ID_PREFIX = "PAT-";
 
 const extractPatientSequence = (patientId = "") => {
@@ -75,6 +85,7 @@ const sanitizeUser = (userDoc) => ({
 	email: userDoc.email,
 	phoneNumber: userDoc.phoneNumber,
 	role: userDoc.role,
+	profilePhoto: userDoc.profilePhoto || "",
 	accountStatus: userDoc.accountStatus || "active",
 	patientProfile:
 		userDoc.role === "patient"
@@ -483,6 +494,120 @@ const getDoctorBookingEligibility = async (req, res) => {
 	}
 };
 
+const updateCurrentUserProfile = async (req, res) => {
+	try {
+		const userId = req.user?.sub;
+		if (!userId) {
+			return res.status(401).json({ message: "invalid authentication token" });
+		}
+
+		const user = await User.findById(userId);
+		if (!user) {
+			return res.status(404).json({ message: "user not found" });
+		}
+
+		const { name, email, phoneNumber, doctorProfile, profilePhoto } = req.body || {};
+
+		if (typeof name === "string") {
+			const trimmedName = name.trim();
+			if (!trimmedName) {
+				return res.status(400).json({ message: "name cannot be empty" });
+			}
+			user.name = trimmedName;
+		}
+
+		if (typeof email === "string") {
+			const normalizedEmail = email.toLowerCase().trim();
+			if (!isValidEmail(normalizedEmail)) {
+				return res.status(400).json({ message: "invalid email format" });
+			}
+
+			const existingEmailUser = await User.findOne({
+				email: normalizedEmail,
+				_id: { $ne: user._id },
+			}).select("_id");
+			if (existingEmailUser) {
+				return res.status(409).json({ message: "email already in use" });
+			}
+
+			user.email = normalizedEmail;
+		}
+
+		if (typeof phoneNumber === "string") {
+			const normalizedPhone = phoneNumber.trim();
+			if (!isValidPhoneNumber(normalizedPhone)) {
+				return res.status(400).json({ message: "invalid phone number format" });
+			}
+
+			const existingPhoneUser = await User.findOne({
+				phoneNumber: normalizedPhone,
+				_id: { $ne: user._id },
+			}).select("_id");
+			if (existingPhoneUser) {
+				return res.status(409).json({ message: "phone number already in use" });
+			}
+
+			user.phoneNumber = normalizedPhone;
+		}
+
+		if (typeof profilePhoto === "string") {
+			const normalizedPhoto = profilePhoto.trim();
+			if (normalizedPhoto) {
+				if (!isValidProfilePhotoDataUrl(normalizedPhoto)) {
+					return res.status(400).json({ message: "profile photo must be a PNG, JPG, or WEBP image" });
+				}
+
+				const photoSizeBytes = getDataUrlByteSize(normalizedPhoto);
+				if (photoSizeBytes > 2 * 1024 * 1024) {
+					return res.status(400).json({ message: "profile photo must be 2MB or smaller" });
+				}
+
+				user.profilePhoto = normalizedPhoto;
+			} else {
+				user.profilePhoto = "";
+			}
+		}
+
+		if (doctorProfile && user.role === "doctor") {
+			if (typeof doctorProfile.specialization === "string") {
+				const specialization = doctorProfile.specialization.trim();
+				if (!specialization) {
+					return res.status(400).json({ message: "specialization cannot be empty" });
+				}
+				user.doctorProfile.specialization = specialization;
+			}
+
+			if (typeof doctorProfile.slmcRegistrationNumber === "string") {
+				const slmcNumber = doctorProfile.slmcRegistrationNumber.trim();
+				if (!slmcNumber) {
+					return res.status(400).json({ message: "SLMC registration number cannot be empty" });
+				}
+				if (!isValidSLMCRegistration(slmcNumber)) {
+					return res.status(400).json({ message: "invalid SLMC registration number format" });
+				}
+				user.doctorProfile.slmcRegistrationNumber = slmcNumber;
+			}
+
+			if (doctorProfile.yearsOfExperience !== undefined) {
+				const years = Number(doctorProfile.yearsOfExperience);
+				if (Number.isNaN(years) || years < 0 || years > 60) {
+					return res.status(400).json({ message: "yearsOfExperience must be between 0 and 60" });
+				}
+				user.doctorProfile.yearsOfExperience = years;
+			}
+		}
+
+		await user.save();
+
+		return res.status(200).json({
+			message: "profile updated successfully",
+			user: sanitizeUser(user),
+		});
+	} catch (error) {
+		return res.status(500).json({ message: "failed to update profile", error: error.message });
+	}
+};
+
 module.exports = {
 	register,
 	login,
@@ -490,4 +615,5 @@ module.exports = {
 	getDoctorBookingEligibility,
 	getMyProfile,
 	upsertMyPatientProfile,
+	updateCurrentUserProfile,
 };

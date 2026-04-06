@@ -33,6 +33,8 @@ services:
       - ./backend/services/appointment-service/.env
     environment:
       - AUTH_SERVICE_URL=http://auth-service:5001/api/auth
+      - DOCTOR_SERVICE_URL=http://doctor-service:5003/api/doctors
+      - DOCTOR_INTERNAL_TOKEN=healthmate-internal-token
       - NOTIFICATION_SERVICE_URL=http://notification-service:5006/api/notifications
     ports:
       - "5004:5004"
@@ -54,6 +56,8 @@ services:
       context: ./backend/services/notification-service
     env_file:
       - ./backend/services/notification-service/.env
+    volumes:
+      - notification_whatsapp_auth:/app/.wwebjs_auth
     ports:
       - "5006:5006"
     restart: unless-stopped
@@ -119,9 +123,19 @@ services:
     environment:
       - VITE_AUTH_API_URL=http://localhost:5001/api/auth
       - VITE_APPOINTMENT_API_URL=http://localhost:5004/api/appointments
+      - VITE_PRESCRIPTION_API_URL=http://localhost:5008/api/prescriptions
       - VITE_DOCTOR_SERVICE_URL=http://localhost:5003/api/doctors
       - VITE_PAYMENT_API_URL=http://localhost:5005/api/payments
       - VITE_ADMIN_API_URL=http://localhost:5009/api/admin
+      - CHOKIDAR_USEPOLLING=true
+    dns:
+      - 8.8.8.8
+    volumes:
+      - ./frontend:/app
+      - /app/node_modules
     depends_on:
       - gateway
     restart: unless-stopped
+
+volumes:
+  notification_whatsapp_auth:

@@ -39,5 +39,17 @@ export const fetchMyProfile = async () => {
 
 export const saveMyPatientProfile = async (payload) => {
 	const response = await api.put("/me/profile", payload);
+export const updateCurrentUserProfile = async (payload) => {
+	const token = localStorage.getItem("healthmate_token");
+	if (!token) {
+		throw new Error("Authentication token not found. Please log in again.");
+	}
+
+	const response = await api.patch("/me", payload, {
+		headers: {
+			Authorization: `Bearer ${token}`,
+		},
+	});
+
 	return response.data;
 };

@@ -36,6 +36,10 @@ const userSchema = new mongoose.Schema(
 			enum: ["patient", "doctor", "admin"],
 			default: "patient",
 		},
+		profilePhoto: {
+			type: String,
+			default: "",
+		},
 		accountStatus: {
 			type: String,
 			enum: ["active", "pending", "suspended", "deactivated"],

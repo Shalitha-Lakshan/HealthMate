@@ -36,6 +36,10 @@ const appointmentSchema = new mongoose.Schema(
 			required: true,
 			trim: true,
 		},
+		patientWhatsAppOptIn: {
+			type: Boolean,
+			default: true,
+		},
 		patientAge: {
 			type: Number,
 			required: true,
@@ -62,6 +66,10 @@ const appointmentSchema = new mongoose.Schema(
 			type: String,
 			required: true,
 			trim: true,
+		},
+		doctorWhatsAppOptIn: {
+			type: Boolean,
+			default: true,
 		},
 		specialty: {
 			type: String,

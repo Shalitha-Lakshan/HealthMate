@@ -3,6 +3,8 @@ import { useState, useEffect } from "react";
 import { fetchDoctorAppointments, completeConsultation } from "../services/appointmentApi";
 import { getStoredUser } from "../utils/auth";
 import { format, parseISO } from "date-fns";
+import DoctorTelemedicinePage from "./DoctorTelemedicinePage";
+import DoctorPrescriptionsPage from "./DoctorPrescriptionsPage";
 
 export default function DoctorConsultationsPage() {
 	const user = getStoredUser() || {};
@@ -12,6 +14,8 @@ export default function DoctorConsultationsPage() {
 	const [loading, setLoading] = useState(true);
 	const [activeTab, setActiveTab] = useState("Upcoming");
 	const [selectedConsultation, setSelectedConsultation] = useState(null);
+	const [activeActionPage, setActiveActionPage] = useState("consultations");
+	const [isCompleting, setIsCompleting] = useState(false);
 
 	useEffect(() => {
 		async function fetchConsultations() {
@@ -39,21 +43,73 @@ export default function DoctorConsultationsPage() {
 		return true;
 	});
 
-	const handleComplete = async (appointmentId) => {
+	const getConsultationId = (consultation) => consultation?._id || consultation?.id || "";
+
+	const handleComplete = async (consultation) => {
+		const appointmentId = getConsultationId(consultation);
+		if (!appointmentId) {
+			alert("Appointment ID is missing.");
+			return;
+		}
+
 		try {
+			setIsCompleting(true);
 			await completeConsultation(appointmentId);
 			// Update local state to reflect the change
-			setAppointments(prev => prev.map(apt => 
-				apt._id === appointmentId ? { ...apt, status: "completed" } : apt
+			setAppointments((prev) => prev.map((apt) =>
+				getConsultationId(apt) === appointmentId ? { ...apt, status: "completed" } : apt
 			));
-			if (selectedConsultation?._id === appointmentId) {
-				setSelectedConsultation(prev => ({ ...prev, status: "completed" }));
+			if (getConsultationId(selectedConsultation) === appointmentId) {
+				setSelectedConsultation((prev) => ({ ...prev, status: "completed" }));
 			}
+			alert("Consultation marked as completed.");
 		} catch (error) {
 			console.error("Failed to complete consultation:", error);
-			alert("Failed to mark consultation as completed.");
+			alert(error?.response?.data?.message || "Failed to mark consultation as completed.");
+		} finally {
+			setIsCompleting(false);
 		}
 	};
+
+	if (activeActionPage === "telemedicine") {
+		return (
+			<div className="space-y-4">
+				<div className="flex items-center justify-between rounded-2xl border border-slate-200 bg-white p-4">
+					<div>
+						<p className="text-sm font-semibold text-slate-900">Telemedicine Session</p>
+						<p className="text-xs text-slate-500">Started from consultation profile.</p>
+					</div>
+					<button
+						onClick={() => setActiveActionPage("consultations")}
+						className="rounded-lg border border-slate-300 px-3 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-50"
+					>
+						Back to Consultations
+					</button>
+				</div>
+				<DoctorTelemedicinePage />
+			</div>
+		);
+	}
+
+	if (activeActionPage === "prescriptions") {
+		return (
+			<div className="space-y-4">
+				<div className="flex items-center justify-between rounded-2xl border border-slate-200 bg-white p-4">
+					<div>
+						<p className="text-sm font-semibold text-slate-900">Digital Prescription</p>
+						<p className="text-xs text-slate-500">Opened from consultation profile.</p>
+					</div>
+					<button
+						onClick={() => setActiveActionPage("consultations")}
+						className="rounded-lg border border-slate-300 px-3 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-50"
+					>
+						Back to Consultations
+					</button>
+				</div>
+				<DoctorPrescriptionsPage />
+			</div>
+		);
+	}
 
 	return (
 		<div className="space-y-6">
@@ -117,10 +173,10 @@ export default function DoctorConsultationsPage() {
 							<div className="space-y-3">
 								{filteredConsultations.map((consult) => (
 									<div
-										key={consult._id}
+										key={getConsultationId(consult)}
 										onClick={() => setSelectedConsultation(consult)}
 										className={`group cursor-pointer rounded-xl border p-4 transition-all hover:shadow-md ${
-											selectedConsultation?._id === consult._id
+											getConsultationId(selectedConsultation) === getConsultationId(consult)
 												? "border-blue-300 bg-blue-50"
 												: "border-slate-200 bg-white hover:border-blue-200 hover:bg-slate-50"
 										}`}
@@ -222,22 +278,29 @@ export default function DoctorConsultationsPage() {
 
 								<div className="mt-6 pt-5 border-t border-slate-100 space-y-2">
 									{selectedConsultation.status === "confirmed" && selectedConsultation.mode === "online" && (
-										<button className="w-full rounded-xl bg-blue-600 px-4 py-2.5 text-sm font-semibold text-white shadow-sm hover:bg-blue-700 transition flex justify-center items-center gap-2">
+											<button
+												onClick={() => setActiveActionPage("telemedicine")}
+												className="w-full rounded-xl bg-blue-600 px-4 py-2.5 text-sm font-semibold text-white shadow-sm hover:bg-blue-700 transition flex justify-center items-center gap-2"
+											>
 											<svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
 												<path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z" />
 											</svg>
 											Start Video Call
 										</button>
 									)}
-									<button className="w-full rounded-xl border border-slate-300 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 shadow-sm hover:bg-slate-50 hover:text-slate-900 transition">
+										<button
+											onClick={() => setActiveActionPage("prescriptions")}
+											className="w-full rounded-xl border border-slate-300 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 shadow-sm hover:bg-slate-50 hover:text-slate-900 transition"
+										>
 										Issue Digital Prescription
 									</button>
 									{selectedConsultation.status === "confirmed" && (
 										<button 
-											onClick={() => handleComplete(selectedConsultation._id)}
-											className="w-full rounded-xl bg-slate-100 px-4 py-2 text-xs font-medium text-slate-600 hover:bg-slate-200 transition"
+												onClick={() => handleComplete(selectedConsultation)}
+												disabled={isCompleting}
+												className="w-full rounded-xl bg-slate-100 px-4 py-2 text-xs font-medium text-slate-600 hover:bg-slate-200 transition disabled:cursor-not-allowed disabled:opacity-60"
 										>
-											Mark as Completed
+												{isCompleting ? "Updating..." : "Mark as Completed"}
 										</button>
 									)}
 								</div>

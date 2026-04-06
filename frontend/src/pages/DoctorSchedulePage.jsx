@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { getStoredUser } from "../utils/auth";
 import { fetchDoctorAppointments } from "../services/appointmentApi";
 import { getDoctorAvailability, updateDoctorAvailability } from "../services/doctorApi";
@@ -136,6 +136,17 @@ function DoctorSchedulePage() {
 		}
 	};
 
+	const appointmentDateKeys = useMemo(() => {
+		const keys = new Set();
+		appointments.forEach((app) => {
+			const dateKey = toDateKey(app.appointmentDate || app.appointmentDateTime);
+			if (dateKey) {
+				keys.add(dateKey);
+			}
+		});
+		return keys;
+	}, [appointments]);
+
 	const scheduleData = appointments
 		.filter((app) => {
 			const dateKey = toDateKey(app.appointmentDate || app.appointmentDateTime);
@@ -161,6 +172,19 @@ function DoctorSchedulePage() {
 	const totalSlots = availability.length > 0 ? availability.length * 8 : 16; // Simple estimation based on hours 
 	const bookedSlots = scheduleData.length;
 	const availableSlots = Math.max(0, totalSlots - bookedSlots);
+
+	const getCalendarTileClassName = ({ date, view }) => {
+		if (view !== "month") {
+			return "";
+		}
+
+		const dateKey = toDateKey(date);
+		if (!appointmentDateKeys.has(dateKey)) {
+			return "";
+		}
+
+		return "bg-amber-100 text-amber-900 font-semibold rounded-lg ring-1 ring-amber-200";
+	};
 
 	return (
 		<div className="space-y-6">
@@ -250,9 +274,14 @@ function DoctorSchedulePage() {
 								<Calendar 
 									onChange={setSelectedDate} 
 									value={selectedDate} 
+									tileClassName={getCalendarTileClassName}
 									className="w-full text-sm text-slate-700"
 								/>
 							</div>
+							<p className="mt-3 text-xs text-slate-500">
+								<span className="mr-1 inline-block h-2 w-2 rounded-full bg-amber-400 align-middle"></span>
+								Highlighted dates have appointments.
+							</p>
 						</div>
 						
 						<div className="rounded-2xl border border-slate-200 bg-white p-5">
