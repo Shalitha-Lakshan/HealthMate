@@ -18,6 +18,7 @@ import {
 	fetchMyMedicalReports,
 	fetchMyProfile,
 	saveMyPatientProfile,
+	deleteMedicalReport,
 	uploadMedicalReport,
 } from "../services/authApi";
 
@@ -191,6 +192,7 @@ function PatientDashboardPage() {
 	const [isLoadingProfile, setIsLoadingProfile] = useState(false);
 	const [isSavingProfile, setIsSavingProfile] = useState(false);
 	const [deletingAppointmentId, setDeletingAppointmentId] = useState("");
+	const [deletingReportId, setDeletingReportId] = useState("");
 	const [availableSlots, setAvailableSlots] = useState([]);
 	const [reservedAppointment, setReservedAppointment] = useState(null);
 	const [profileFormData, setProfileFormData] = useState({
@@ -861,6 +863,27 @@ function PatientDashboardPage() {
 		}
 	};
 
+	const handleDeleteReport = async (reportId) => {
+		const shouldDelete = window.confirm("Delete this uploaded report?");
+		if (!shouldDelete) {
+			return;
+		}
+
+		setReportError("");
+		setReportSuccess("");
+		setDeletingReportId(reportId);
+
+		try {
+			await deleteMedicalReport(reportId);
+			setMedicalReports((prev) => prev.filter((report) => report.id !== reportId));
+			setReportSuccess("Medical report deleted successfully.");
+		} catch (error) {
+			setReportError(error.response?.data?.message || "Failed to delete medical report.");
+		} finally {
+			setDeletingReportId("");
+		}
+	};
+
 	useEffect(() => {
 		if (activeMenuItem !== "Appointments" && activeMenuItem !== "Medical Reports") {
 			return;
@@ -1507,6 +1530,14 @@ function PatientDashboardPage() {
 										className="rounded-lg bg-blue-600 px-3 py-1.5 text-xs font-semibold text-white transition hover:bg-blue-700"
 									>
 										Download PDF
+									</button>
+									<button
+										type="button"
+										onClick={() => handleDeleteReport(report.id)}
+										disabled={deletingReportId === report.id}
+										className="rounded-lg bg-rose-600 px-3 py-1.5 text-xs font-semibold text-white transition hover:bg-rose-700 disabled:cursor-not-allowed disabled:bg-rose-300"
+									>
+										{deletingReportId === report.id ? "Deleting..." : "Delete"}
 									</button>
 								</div>
 							</div>

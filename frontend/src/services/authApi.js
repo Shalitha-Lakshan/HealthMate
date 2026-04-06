@@ -71,3 +71,8 @@ export const fetchDoctorMedicalReports = async () => {
 	const response = await api.get("/reports/doctor");
 	return response.data;
 };
+
+export const deleteMedicalReport = async (reportId) => {
+	const response = await api.delete(`/reports/${reportId}`);
+	return response.data;
+};
