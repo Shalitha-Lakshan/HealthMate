@@ -831,9 +831,14 @@ function PatientDashboardPage() {
 		}
 	};
 
-	const handleConfirmPayment = async () => {
-		if (!reservedAppointment?._id) {
-			setErrorMessage("No reserved appointment found for payment.");
+	const handleConfirmPayment = async (appointmentToPay = reservedAppointment) => {
+		if (!appointmentToPay?._id) {
+			setErrorMessage("No appointment selected for payment.");
+			return;
+		}
+
+		if (appointmentToPay.status !== "pending_payment") {
+			setErrorMessage("Payment is enabled only after doctor confirmation.");
 			return;
 		}
 
@@ -843,9 +848,9 @@ function PatientDashboardPage() {
 
 		try {
 			const initiated = await initiatePayment({
-				appointmentId: reservedAppointment._id,
-				amount: reservedAppointment.consultationFee,
-				currency: reservedAppointment.currency,
+				appointmentId: appointmentToPay._id,
+				amount: appointmentToPay.consultationFee,
+				currency: appointmentToPay.currency,
 				provider: "stripe",
 				successUrl: `${window.location.origin}/dashboard/patient?payment=success`,
 				cancelUrl: `${window.location.origin}/dashboard/patient?payment=cancel`,
@@ -946,7 +951,7 @@ function PatientDashboardPage() {
 			setSuccessMessage("");
 
 			if (paymentStatus === "cancel") {
-				setErrorMessage("Payment cancelled. Your slot is still pending until expiry.");
+				setErrorMessage("Payment cancelled. You can retry before payment window expires.");
 				window.history.replaceState({}, "", "/dashboard/patient");
 				await loadAppointments();
 				return;
@@ -1059,7 +1064,7 @@ function PatientDashboardPage() {
 		<div className="grid gap-5 lg:grid-cols-[1.1fr_1fr]">
 			<section className="rounded-2xl border border-slate-200 bg-white p-5">
 				<h2 className="text-sm font-semibold text-slate-900">Book Appointment</h2>
-				<p className="mt-1 text-xs text-slate-500">Select a doctor slot, pay, and confirm your appointment.</p>
+				<p className="mt-1 text-xs text-slate-500">Submit request first. Doctor confirmation is required before payment.</p>
 
 				<form className="mt-4 space-y-3" onSubmit={handleCreateAppointment}>
 					<div className="grid gap-3 sm:grid-cols-2">
@@ -1239,29 +1244,16 @@ function PatientDashboardPage() {
 						disabled={isSubmitting}
 						className="w-full rounded-xl bg-blue-600 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:bg-blue-300"
 					>
-						{isSubmitting ? "Reserving slot..." : "Reserve Slot"}
+						{isSubmitting ? "Submitting request..." : "Submit Appointment Request"}
 					</button>
 
 					{reservedAppointment && (
 						<div className="rounded-xl border border-emerald-200 bg-emerald-50 p-4">
-							<p className="text-xs font-semibold uppercase tracking-wide text-emerald-700">Payment Required</p>
+							<p className="text-xs font-semibold uppercase tracking-wide text-emerald-700">Request Submitted</p>
 							<p className="mt-2 text-sm text-emerald-900">
-								Reserved slot: {reservedAppointment.appointmentDate} • {reservedAppointment.slotTime}
+								Requested slot: {reservedAppointment.appointmentDate} • {reservedAppointment.slotTime}
 							</p>
-							<p className="mt-1 text-sm text-emerald-900">
-								Fee: {reservedAppointment.currency} {reservedAppointment.consultationFee}
-							</p>
-							<p className="mt-1 text-xs text-emerald-700">
-								Pay before: {formatAppointmentDate(reservedAppointment.paymentExpiresAt)}
-							</p>
-							<button
-								type="button"
-								onClick={handleConfirmPayment}
-								disabled={isPaying}
-								className="mt-3 w-full rounded-lg bg-emerald-600 px-3 py-2 text-sm font-semibold text-white transition hover:bg-emerald-700 disabled:cursor-not-allowed disabled:bg-emerald-300"
-							>
-								{isPaying ? "Processing payment..." : "Pay & Confirm Appointment"}
-							</button>
+							<p className="mt-1 text-xs text-emerald-700">Waiting for doctor confirmation before payment.</p>
 						</div>
 					)}
 				</form>
@@ -1300,8 +1292,10 @@ function PatientDashboardPage() {
 										className={`rounded-lg px-2 py-1 text-[11px] font-semibold uppercase ${
 											appointment.status === "confirmed"
 												? "bg-emerald-100 text-emerald-700"
-												: appointment.status === "pending_payment"
+												: appointment.status === "pending"
 													? "bg-amber-100 text-amber-700"
+												: appointment.status === "pending_payment"
+													? "bg-purple-100 text-purple-700"
 													: appointment.status === "expired" || appointment.status === "payment_failed"
 														? "bg-rose-100 text-rose-700"
 														: "bg-slate-200 text-slate-700"
@@ -1321,6 +1315,23 @@ function PatientDashboardPage() {
 									<p className="mt-2 text-xs text-slate-600">
 										Payment: {appointment.paymentStatus} • {appointment.currency} {appointment.consultationFee}
 									</p>
+								)}
+								{appointment.status === "pending_payment" && (
+									<>
+										{appointment.paymentExpiresAt && (
+											<p className="mt-2 text-xs text-slate-600">
+												Pay before: {formatAppointmentDate(appointment.paymentExpiresAt)}
+											</p>
+										)}
+										<button
+											type="button"
+											onClick={() => handleConfirmPayment(appointment)}
+											disabled={isPaying}
+											className="mt-2 rounded-lg bg-emerald-600 px-3 py-1.5 text-xs font-semibold text-white transition hover:bg-emerald-700 disabled:cursor-not-allowed disabled:bg-emerald-300"
+										>
+											{isPaying ? "Processing..." : "Pay Now"}
+										</button>
+									</>
 								)}
 								<p className="mt-2 text-xs text-slate-600">Reason: {appointment.reason}</p>
 								{appointment.status === "expired" && (
