@@ -211,7 +211,9 @@ function PatientDashboardPage() {
 	const [deletingAppointmentId, setDeletingAppointmentId] = useState("");
 	const [deletingReportId, setDeletingReportId] = useState("");
 	const [availableSlots, setAvailableSlots] = useState([]);
+	const [slotError, setSlotError] = useState("");
 	const [reservedAppointment, setReservedAppointment] = useState(null);
+	const [telemedicineRoomId, setTelemedicineRoomId] = useState("");
 	const [profileFormData, setProfileFormData] = useState({
 		...INITIAL_PROFILE_STATE,
 		name: user.name || "",
@@ -228,6 +230,48 @@ function PatientDashboardPage() {
 		{ label: "Prescriptions", value: "12", meta: "Digital copies" },
 		{ label: "Reports", value: "08", meta: "Uploaded files" },
 	];
+
+	const getAppointmentStart = (appointment) => {
+		if (!appointment) {
+			return null;
+		}
+
+		const dateTimeValue = appointment.appointmentDateTime
+			|| (appointment.appointmentDate && appointment.slotTime
+				? `${appointment.appointmentDate}T${appointment.slotTime}:00`
+				: appointment.appointmentDate
+					? `${appointment.appointmentDate}T00:00:00`
+					: null);
+
+		if (!dateTimeValue) {
+			return null;
+		}
+
+		const parsed = new Date(dateTimeValue);
+		return Number.isNaN(parsed.getTime()) ? null : parsed;
+	};
+
+	const canJoinTelemedicine = (appointment) => {
+		if (!appointment || appointment.mode !== "online" || appointment.status !== "confirmed") {
+			return false;
+		}
+
+		const startTime = getAppointmentStart(appointment);
+		if (!startTime) {
+			return false;
+		}
+
+		return Date.now() >= startTime.getTime();
+	};
+
+	const handleJoinTelemedicine = (appointment) => {
+		const roomId = appointment?.appointmentId || appointment?._id || appointment?.id;
+		if (!roomId) {
+			return;
+		}
+		setTelemedicineRoomId(String(roomId));
+		setActiveMenuItem("Telemedicine");
+	};
 
 	const upcomingAppointments = appointments
 		.filter((appointment) => {
@@ -373,19 +417,29 @@ function PatientDashboardPage() {
 	const loadSlots = async (doctorId, date) => {
 		if (!doctorId || !date) {
 			setAvailableSlots([]);
+			setSlotError("");
 			return;
 		}
 
 		setIsLoadingSlots(true);
+		setSlotError("");
 		try {
 			const response = await fetchAvailableSlots({ doctorId, date });
 			setAvailableSlots(response.slots || []);
-		} catch {
+		} catch (error) {
+			setSlotError(error.response?.data?.message || "Failed to load available slots.");
 			setAvailableSlots([]);
 		} finally {
 			setIsLoadingSlots(false);
 		}
 	};
+
+	useEffect(() => {
+		if (!formData.doctorId || !formData.appointmentDate) {
+			return;
+		}
+		loadSlots(formData.doctorId, formData.appointmentDate);
+	}, [formData.doctorId, formData.appointmentDate]);
 
 	const handleAppointmentChange = (event) => {
 		const { name, value } = event.target;
@@ -416,6 +470,7 @@ function PatientDashboardPage() {
 				slotTime: "",
 			}));
 			setAvailableSlots([]);
+			setSlotError("");
 			setReservedAppointment(null);
 			return;
 		}
@@ -434,6 +489,7 @@ function PatientDashboardPage() {
 				slotTime: "",
 			}));
 			setAvailableSlots([]);
+			setSlotError("");
 			setReservedAppointment(null);
 			return;
 		}
@@ -460,7 +516,6 @@ function PatientDashboardPage() {
 		if (name === "appointmentDate") {
 			setFormData((prev) => ({ ...prev, appointmentDate: value, slotTime: "" }));
 			setReservedAppointment(null);
-			loadSlots(formData.doctorId, value);
 			return;
 		}
 
@@ -1185,16 +1240,30 @@ function PatientDashboardPage() {
 								className="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
 							>
 								<option value="">
-									{isLoadingSlots ? "Loading slots..." : formData.appointmentDate ? "Select available slot" : "Select date first"}
+									{isLoadingSlots
+										? "Loading slots..."
+										: formData.appointmentDate
+											? availableSlots.length > 0
+												? "Select available slot"
+												: "No available slots"
+											: "Select date first"}
 								</option>
 								{availableSlots
-									.filter((slot) => slot.available)
-									.map((slot) => (
-										<option key={slot.time} value={slot.time}>
-											{slot.time}
-										</option>
-									))}
+									.filter((slot) => (typeof slot === "string" ? true : slot.available))
+									.map((slot) => {
+										const value = typeof slot === "string" ? slot : slot.time;
+										return (
+											<option key={value} value={value}>
+												{value}
+											</option>
+										);
+									})}
 							</select>
+							{slotError && (
+								<p className="mt-2 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-700">
+									{slotError}
+								</p>
+							)}
 						</div>
 					</div>
 
@@ -1334,6 +1403,21 @@ function PatientDashboardPage() {
 									</>
 								)}
 								<p className="mt-2 text-xs text-slate-600">Reason: {appointment.reason}</p>
+								{appointment.status === "confirmed" && appointment.mode === "online" && (
+									<button
+										type="button"
+										onClick={() => handleJoinTelemedicine(appointment)}
+										disabled={!canJoinTelemedicine(appointment)}
+										title={
+											canJoinTelemedicine(appointment)
+												? "Join telemedicine session"
+												: "Join is available at the scheduled time"
+										}
+										className="mt-3 rounded-lg bg-blue-600 px-3 py-2 text-xs font-semibold text-white transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:bg-slate-300"
+									>
+										{canJoinTelemedicine(appointment) ? "Join Video Call" : "Join at scheduled time"}
+									</button>
+								)}
 								{appointment.status === "expired" && (
 									<button
 										type="button"
@@ -1594,7 +1678,7 @@ function PatientDashboardPage() {
 			{activeMenuItem === "Medical Reports" ? (
 				renderMedicalReports()
 			) : activeMenuItem === "Telemedicine" ? (
-				<PatientTelemedicinePage />
+				<PatientTelemedicinePage initialRoomId={telemedicineRoomId} />
 			) : activeMenuItem === "Appointments" ? (
 				renderAppointments()
 			) : activeMenuItem === "AI Assistant" ? (

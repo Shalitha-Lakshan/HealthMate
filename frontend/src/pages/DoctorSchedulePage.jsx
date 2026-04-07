@@ -184,6 +184,39 @@ function DoctorSchedulePage() {
 		}
 	};
 
+	const getAppointmentStart = (appointment) => {
+		if (!appointment) {
+			return null;
+		}
+
+		const dateTimeValue = appointment.appointmentDateTime
+			|| (appointment.appointmentDate && appointment.slotTime
+				? `${appointment.appointmentDate}T${appointment.slotTime}:00`
+				: appointment.appointmentDate
+					? `${appointment.appointmentDate}T00:00:00`
+					: null);
+
+		if (!dateTimeValue) {
+			return null;
+		}
+
+		const parsed = new Date(dateTimeValue);
+		return Number.isNaN(parsed.getTime()) ? null : parsed;
+	};
+
+	const canJoinTelemedicine = (appointment) => {
+		if (!appointment || appointment.mode !== "online" || appointment.status !== "confirmed") {
+			return false;
+		}
+
+		const startTime = getAppointmentStart(appointment);
+		if (!startTime) {
+			return false;
+		}
+
+		return Date.now() >= startTime.getTime();
+	};
+
 	const appointmentDateKeys = useMemo(() => {
 		const keys = new Set();
 		appointments.forEach((app) => {
@@ -565,6 +598,17 @@ function DoctorSchedulePage() {
 							{normalizeStatus(selectedAppointment.status) === "confirmed" && selectedAppointment.mode === "online" && (
 								<button className="rounded-xl bg-blue-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-blue-700">
 									Start Video Call
+							{selectedAppointment.status === "confirmed" && selectedAppointment.mode === "online" && (
+								<button
+									disabled={!canJoinTelemedicine(selectedAppointment)}
+									title={
+										canJoinTelemedicine(selectedAppointment)
+											? "Join telemedicine session"
+											: "Join is available at the scheduled time"
+									}
+									className="rounded-xl bg-blue-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:bg-slate-300"
+								>
+									{canJoinTelemedicine(selectedAppointment) ? "Join Video Call" : "Join at scheduled time"}
 								</button>
 							)}
 						</div>
