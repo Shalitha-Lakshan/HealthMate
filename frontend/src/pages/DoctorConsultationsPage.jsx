@@ -1,6 +1,9 @@
 // src/pages/DoctorConsultationsPage.jsx
 import { useState, useEffect } from "react";
-import { fetchDoctorAppointments, completeConsultation } from "../services/appointmentApi";
+import {
+	fetchDoctorAppointments,
+	completeConsultation,
+} from "../services/appointmentApi";
 import { getStoredUser } from "../utils/auth";
 import { format, parseISO } from "date-fns";
 import DoctorTelemedicinePage from "./DoctorTelemedicinePage";
@@ -201,7 +204,7 @@ export default function DoctorConsultationsPage() {
 											</div>
 											<div className="flex items-center gap-3 w-full sm:w-auto justify-end border-t border-slate-100 pt-3 sm:border-0 sm:pt-0">
 												<span className={`rounded-full px-2.5 py-1 text-[11px] font-medium tracking-wide ${
-													consult.status === "confirmed" ? "bg-blue-100 text-blue-700" :
+														consult.status === "confirmed" ? "bg-blue-100 text-blue-700" :
 													consult.status === "completed" ? "bg-emerald-100 text-emerald-700" :
 													consult.status === "cancelled" ? "bg-red-100 text-red-700" :
 													"bg-slate-100 text-slate-700"

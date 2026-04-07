@@ -1,6 +1,10 @@
 import { useState, useEffect, useMemo } from "react";
 import { getStoredUser } from "../utils/auth";
-import { fetchDoctorAppointments } from "../services/appointmentApi";
+import {
+	fetchDoctorAppointments,
+	approveDoctorAppointment,
+	cancelDoctorAppointment,
+} from "../services/appointmentApi";
 import { getDoctorAvailability, updateDoctorAvailability } from "../services/doctorApi";
 import Calendar from "react-calendar";
 import "react-calendar/dist/Calendar.css";
@@ -13,6 +17,7 @@ function DoctorSchedulePage() {
 	const [availability, setAvailability] = useState([]);
 	const [saving, setSaving] = useState(false);
 	const [selectedAppointment, setSelectedAppointment] = useState(null);
+	const [isUpdatingDecision, setIsUpdatingDecision] = useState(false);
 	
 	const user = getStoredUser() || {};
 	const doctorId = user.id || user._id;
@@ -23,7 +28,7 @@ function DoctorSchedulePage() {
 			if (!doctorId) return;
 			setLoading(true);
 			try {
-				if (activeTab === "calendar") {
+				if (activeTab === "calendar" || activeTab === "requests") {
 					const data = await fetchDoctorAppointments(doctorId);
 					setAppointments(data.appointments || []);
 				} else if (activeTab === "availability") {
@@ -72,6 +77,49 @@ function DoctorSchedulePage() {
 		setAvailability(newAvailability);
 	};
 
+	const getAppointmentId = (appointment) => appointment?._id || appointment?.id || "";
+	const normalizeStatus = (statusValue) => (statusValue || "").toString().trim().toLowerCase();
+
+	const handleAppointmentDecision = async (appointment, decision) => {
+		const appointmentId = getAppointmentId(appointment);
+		if (!appointmentId) {
+			alert("Appointment ID is missing.");
+			return;
+		}
+
+		if (decision === "cancel") {
+			const shouldCancel = window.confirm("Cancel this appointment?");
+			if (!shouldCancel) return;
+		}
+
+		try {
+			setIsUpdatingDecision(true);
+			const response = decision === "confirm"
+				? await approveDoctorAppointment(appointmentId)
+				: await cancelDoctorAppointment(appointmentId);
+
+			const nextStatus = response?.appointment?.status || (decision === "confirm" ? "pending_payment" : "cancelled");
+
+			setAppointments((prev) => prev.map((item) => (
+				getAppointmentId(item) === appointmentId ? { ...item, status: nextStatus } : item
+			)));
+
+			setSelectedAppointment((prev) => (
+				prev && getAppointmentId(prev) === appointmentId ? { ...prev, status: nextStatus } : prev
+			));
+
+			alert(
+				decision === "confirm"
+					? "Appointment confirmed. Patient can now proceed with payment."
+					: "Appointment cancelled."
+			);
+		} catch (error) {
+			alert(error?.response?.data?.message || `Failed to ${decision} appointment.`);
+		} finally {
+			setIsUpdatingDecision(false);
+		}
+	};
+
 	const timeOptions = [];
 	for (let i = 0; i < 24; i++) {
 		const hour = i % 12 || 12;
@@ -115,7 +163,7 @@ function DoctorSchedulePage() {
 			case "confirmed":
 				return { label: "Confirmed", className: "bg-green-100 text-green-700" };
 			case "pending":
-				return { label: "Pending", className: "bg-blue-100 text-blue-700" };
+				return { label: "Pending Confirmation", className: "bg-blue-100 text-blue-700" };
 			case "pending_payment":
 				return { label: "Pending Payment", className: "bg-amber-100 text-amber-700" };
 			case "completed":
@@ -168,6 +216,10 @@ function DoctorSchedulePage() {
 			};
 		});
 
+	const pendingRequests = appointments
+		.filter((appointment) => normalizeStatus(appointment.status) === "pending")
+		.sort((first, second) => new Date(first.appointmentDateTime) - new Date(second.appointmentDateTime));
+
 	// Calculate Daily Summary logic
 	const totalSlots = availability.length > 0 ? availability.length * 8 : 16; // Simple estimation based on hours 
 	const bookedSlots = scheduleData.length;
@@ -205,6 +257,16 @@ function DoctorSchedulePage() {
 					}`}
 				>
 					Daily Schedule
+				</button>
+				<button
+					onClick={() => setActiveTab("requests")}
+					className={`pb-4 -mb-4 text-sm font-medium transition ${
+						activeTab === "requests"
+							? "border-b-2 border-blue-600 text-blue-700"
+							: "text-slate-500 hover:text-slate-700"
+					}`}
+				>
+					Appointment Requests
 				</button>
 				<button
 					onClick={() => setActiveTab("availability")}
@@ -252,6 +314,26 @@ function DoctorSchedulePage() {
 											<span className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-semibold ${slot.statusClassName}`}>
 												{slot.statusLabel}
 											</span>
+											{normalizeStatus(slot.raw?.status) === "pending" && (
+												<div className="flex items-center gap-2" onClick={(event) => event.stopPropagation()}>
+													<button
+														type="button"
+														onClick={() => handleAppointmentDecision(slot.raw, "confirm")}
+														disabled={isUpdatingDecision}
+														className="rounded-lg bg-emerald-600 px-2.5 py-1.5 text-[11px] font-semibold text-white hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-60"
+													>
+														Confirm
+													</button>
+													<button
+														type="button"
+														onClick={() => handleAppointmentDecision(slot.raw, "cancel")}
+														disabled={isUpdatingDecision}
+														className="rounded-lg border border-rose-300 bg-white px-2.5 py-1.5 text-[11px] font-semibold text-rose-700 hover:bg-rose-50 disabled:cursor-not-allowed disabled:opacity-60"
+													>
+														Cancel
+													</button>
+												</div>
+											)}
 											<button 
 												onClick={() => setSelectedAppointment(slot.raw)}
 												className="rounded-lg border border-slate-200 px-3 py-1.5 text-sm font-medium text-slate-700 hover:bg-slate-50"
@@ -301,6 +383,52 @@ function DoctorSchedulePage() {
 								</div>
 							</div>
 						</div>
+					</div>
+				</div>
+			)}
+
+			{activeTab === "requests" && (
+				<div className="rounded-2xl border border-slate-200 bg-white shadow-sm">
+					<div className="border-b border-slate-200 p-5">
+						<h3 className="font-semibold text-slate-900">Pending Appointment Requests</h3>
+						<p className="mt-1 text-xs text-slate-500">Review and confirm/cancel patient appointment requests.</p>
+					</div>
+					<div className="divide-y divide-slate-100">
+						{loading ? (
+							<div className="p-5 text-sm text-slate-500">Loading requests...</div>
+						) : pendingRequests.length === 0 ? (
+							<div className="p-5 text-sm text-slate-500">No pending requests right now.</div>
+						) : (
+							pendingRequests.map((request) => (
+								<div key={request._id || request.id} className="flex flex-col gap-3 p-5 sm:flex-row sm:items-center sm:justify-between">
+									<div>
+										<p className="font-semibold text-slate-900">{request.patientName}</p>
+										<p className="mt-1 text-xs text-slate-500">
+											{request.appointmentDate} at {request.slotTime} • {request.mode}
+										</p>
+										<p className="mt-1 text-xs text-slate-600">Reason: {request.reason}</p>
+									</div>
+									<div className="flex items-center gap-2">
+										<button
+											type="button"
+											onClick={() => handleAppointmentDecision(request, "confirm")}
+											disabled={isUpdatingDecision}
+											className="rounded-lg bg-emerald-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-60"
+										>
+											{isUpdatingDecision ? "Updating..." : "Confirm"}
+										</button>
+										<button
+											type="button"
+											onClick={() => handleAppointmentDecision(request, "cancel")}
+											disabled={isUpdatingDecision}
+											className="rounded-lg border border-rose-300 bg-white px-3 py-1.5 text-xs font-semibold text-rose-700 hover:bg-rose-50 disabled:cursor-not-allowed disabled:opacity-60"
+										>
+											{isUpdatingDecision ? "Updating..." : "Cancel"}
+										</button>
+									</div>
+								</div>
+							))
+						)}
 					</div>
 				</div>
 			)}
@@ -414,7 +542,27 @@ function DoctorSchedulePage() {
 							<button onClick={() => setSelectedAppointment(null)} className="rounded-xl border border-slate-200 px-4 py-2 text-sm font-semibold text-slate-700 transition hover:bg-slate-50">
 								Close
 							</button>
-							{selectedAppointment.status === "confirmed" && selectedAppointment.mode === "online" && (
+							{["pending", "pending_payment", "confirmed"].includes(normalizeStatus(selectedAppointment.status)) && (
+								<>
+									<button
+										onClick={() => handleAppointmentDecision(selectedAppointment, "cancel")}
+										disabled={isUpdatingDecision}
+										className="rounded-xl border border-rose-300 bg-white px-4 py-2 text-sm font-semibold text-rose-700 transition hover:bg-rose-50 disabled:cursor-not-allowed disabled:opacity-60"
+									>
+										{isUpdatingDecision ? "Updating..." : "Cancel Appointment"}
+									</button>
+									{normalizeStatus(selectedAppointment.status) === "pending" && (
+										<button
+											onClick={() => handleAppointmentDecision(selectedAppointment, "confirm")}
+											disabled={isUpdatingDecision}
+											className="rounded-xl bg-emerald-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-60"
+										>
+											{isUpdatingDecision ? "Updating..." : "Confirm Appointment"}
+										</button>
+									)}
+								</>
+							)}
+							{normalizeStatus(selectedAppointment.status) === "confirmed" && selectedAppointment.mode === "online" && (
 								<button className="rounded-xl bg-blue-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-blue-700">
 									Start Video Call
 								</button>

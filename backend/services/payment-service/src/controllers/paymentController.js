@@ -32,6 +32,22 @@ const confirmAppointmentInternally = async ({ appointmentId, patientId, paymentM
 	return { response, appointmentResponse };
 };
 
+const validatePaymentEligibilityInternally = async ({ appointmentId, patientId }) => {
+	const response = await fetch(
+		`${APPOINTMENT_SERVICE_URL}/internal/${appointmentId}/payment-eligibility?patientId=${encodeURIComponent(String(patientId))}`,
+		{
+			method: "GET",
+			headers: {
+				"Content-Type": "application/json",
+				"x-internal-token": APPOINTMENT_INTERNAL_TOKEN,
+			},
+		}
+	);
+
+	const eligibilityResponse = await response.json();
+	return { response, eligibilityResponse };
+};
+
 const initiatePayment = async (req, res) => {
 	try {
 		const {
@@ -43,8 +59,8 @@ const initiatePayment = async (req, res) => {
 			cancelUrl = PAYMENT_CANCEL_URL,
 		} = req.body;
 
-		if (!appointmentId || amount === undefined) {
-			return res.status(400).json({ message: "appointmentId and amount are required" });
+		if (!appointmentId) {
+			return res.status(400).json({ message: "appointmentId is required" });
 		}
 
 		if (provider !== "stripe") {
@@ -55,16 +71,36 @@ const initiatePayment = async (req, res) => {
 			return res.status(500).json({ message: "STRIPE_SECRET_KEY is missing in environment variables" });
 		}
 
-		const parsedAmount = Number(amount);
-		if (Number.isNaN(parsedAmount) || parsedAmount <= 0) {
-			return res.status(400).json({ message: "amount must be a valid number greater than 0" });
+		const { response, eligibilityResponse } = await validatePaymentEligibilityInternally({
+			appointmentId,
+			patientId: req.user.sub,
+		});
+
+		if (!response.ok) {
+			return res.status(response.status).json({
+				message: eligibilityResponse.message || "appointment is not eligible for payment",
+			});
+		}
+
+		const payableAmount = Number(eligibilityResponse?.appointment?.consultationFee);
+		if (Number.isNaN(payableAmount) || payableAmount <= 0) {
+			return res.status(400).json({ message: "appointment has invalid payable amount" });
+		}
+
+		const payableCurrency = String(eligibilityResponse?.appointment?.currency || "LKR").toUpperCase();
+		if (amount !== undefined && Number(amount) !== payableAmount) {
+			return res.status(400).json({ message: "amount mismatch for selected appointment" });
+		}
+
+		if (currency && String(currency).toUpperCase() !== payableCurrency) {
+			return res.status(400).json({ message: "currency mismatch for selected appointment" });
 		}
 
 		const paymentTransaction = await PaymentTransaction.create({
 			appointmentId,
 			patientId: req.user.sub,
-			amount: parsedAmount,
-			currency,
+			amount: payableAmount,
+			currency: payableCurrency,
 			provider,
 			status: "pending",
 		});
@@ -75,11 +111,11 @@ const initiatePayment = async (req, res) => {
 			line_items: [
 				{
 					price_data: {
-						currency: currency.toLowerCase(),
+						currency: payableCurrency.toLowerCase(),
 						product_data: {
 							name: `Consultation Fee - ${paymentTransaction.transactionId}`,
 						},
-						unit_amount: toSmallestCurrencyUnit(parsedAmount),
+						unit_amount: toSmallestCurrencyUnit(payableAmount),
 					},
 					quantity: 1,
 				},
