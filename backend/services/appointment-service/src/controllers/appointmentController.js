@@ -270,7 +270,7 @@ const getAvailableSlots = async (req, res) => {
 		const existingAppointments = await Appointment.find({
 			doctorId,
 			appointmentDate: normalizedDate,
-			status: { $in: ["pending_payment", "confirmed", "completed"] },
+			status: { $in: ["pending", "pending_payment", "confirmed", "completed"] },
 		});
 
 		const bookedSlots = new Set(existingAppointments.map((item) => item.slotTime));
@@ -366,14 +366,12 @@ const createAppointmentHold = async (req, res) => {
 			doctorId,
 			appointmentDate: normalizedDate,
 			slotTime,
-			status: { $in: ["pending_payment", "confirmed", "completed"] },
+			status: { $in: ["pending", "pending_payment", "confirmed", "completed"] },
 		});
 
 		if (conflictingAppointment) {
 			return res.status(409).json({ message: "selected slot is no longer available" });
 		}
-
-		const paymentExpiresAt = new Date(Date.now() + PAYMENT_HOLD_MINUTES * 60 * 1000);
 
 		const appointment = await Appointment.create({
 			patientId: req.user.sub,
@@ -392,16 +390,15 @@ const createAppointmentHold = async (req, res) => {
 			appointmentDate: normalizedDate,
 			slotTime,
 			mode: mode || "in-person",
-			reason: typeof reason === "string" ? reason.trim() : "",
-			status: "pending_payment",
+			reason: reason.trim(),
+			status: "pending",
 			paymentStatus: "pending",
 			consultationFee: DEFAULT_CONSULTATION_FEE,
 			currency: "LKR",
-			paymentExpiresAt,
 		});
 
 		return res.status(201).json({
-			message: "slot reserved. complete payment to confirm appointment",
+			message: "appointment request submitted. waiting for doctor confirmation",
 			appointment,
 		});
 	} catch (error) {
@@ -440,6 +437,104 @@ const getDoctorAppointments = async (req, res) => {
 		return res.status(200).json({ appointments });
 	} catch (error) {
 		return res.status(500).json({ message: "failed to fetch doctor appointments", error: error.message });
+	}
+};
+
+const approveAppointmentByDoctor = async (req, res) => {
+	try {
+		await releaseExpiredPendingPayments();
+		const { id } = req.params;
+
+		const appointment = await Appointment.findById(id);
+		if (!appointment) {
+			return res.status(404).json({ message: "appointment not found" });
+		}
+
+		if (String(appointment.doctorId) !== String(req.user.sub)) {
+			return res.status(403).json({ message: "you can only approve your own appointments" });
+		}
+
+		if (appointment.status !== "pending") {
+			return res.status(400).json({ message: "only pending appointments can be approved" });
+		}
+
+		appointment.status = "pending_payment";
+		appointment.paymentStatus = "pending";
+		appointment.paymentExpiresAt = new Date(Date.now() + PAYMENT_HOLD_MINUTES * 60 * 1000);
+		await appointment.save();
+
+		return res.status(200).json({
+			message: "appointment approved. patient can proceed with payment",
+			appointment,
+		});
+	} catch (error) {
+		return res.status(500).json({ message: "failed to approve appointment", error: error.message });
+	}
+};
+
+const rejectAppointmentByDoctor = async (req, res) => {
+	try {
+		const { id } = req.params;
+
+		const appointment = await Appointment.findById(id);
+		if (!appointment) {
+			return res.status(404).json({ message: "appointment not found" });
+		}
+
+		if (String(appointment.doctorId) !== String(req.user.sub)) {
+			return res.status(403).json({ message: "you can only reject your own appointments" });
+		}
+
+		if (appointment.status !== "pending") {
+			return res.status(400).json({ message: "only pending appointments can be rejected" });
+		}
+
+		appointment.status = "rejected";
+		appointment.paymentStatus = "failed";
+		appointment.paymentExpiresAt = new Date();
+		await appointment.save();
+
+		return res.status(200).json({
+			message: "appointment rejected",
+			appointment,
+		});
+	} catch (error) {
+		return res.status(500).json({ message: "failed to reject appointment", error: error.message });
+	}
+};
+
+const cancelAppointmentByDoctor = async (req, res) => {
+	try {
+		const { id } = req.params;
+
+		const appointment = await Appointment.findById(id);
+		if (!appointment) {
+			return res.status(404).json({ message: "appointment not found" });
+		}
+
+		if (String(appointment.doctorId) !== String(req.user.sub)) {
+			return res.status(403).json({ message: "you can only cancel your own appointments" });
+		}
+
+		if (["cancelled", "completed", "rejected", "expired"].includes(appointment.status)) {
+			return res.status(400).json({ message: "appointment cannot be cancelled in its current state" });
+		}
+
+		appointment.status = "cancelled";
+		if (appointment.paymentStatus === "pending") {
+			appointment.paymentStatus = "failed";
+		}
+		appointment.paymentExpiresAt = new Date();
+
+		await appointment.save();
+		await sendAppointmentNotification({ eventType: "APPOINTMENT_CANCELLED", appointment });
+
+		return res.status(200).json({
+			message: "appointment cancelled successfully",
+			appointment,
+		});
+	} catch (error) {
+		return res.status(500).json({ message: "failed to cancel appointment", error: error.message });
 	}
 };
 
@@ -531,6 +626,51 @@ const confirmAppointmentPaymentInternal = async (req, res) => {
 		});
 	} catch (error) {
 		return res.status(500).json({ message: "failed to confirm payment", error: error.message });
+	}
+};
+
+const getPaymentEligibilityInternal = async (req, res) => {
+	try {
+		await releaseExpiredPendingPayments();
+
+		const internalToken = req.headers["x-internal-token"];
+		if (!internalToken || internalToken !== APPOINTMENT_INTERNAL_TOKEN) {
+			return res.status(401).json({ message: "invalid internal service token" });
+		}
+
+		const { appointmentId } = req.params;
+		const { patientId } = req.query;
+
+		if (!appointmentId || !patientId) {
+			return res.status(400).json({ message: "appointmentId and patientId are required" });
+		}
+
+		const appointment = await Appointment.findById(appointmentId);
+		if (!appointment) {
+			return res.status(404).json({ message: "appointment not found" });
+		}
+
+		if (String(appointment.patientId) !== String(patientId)) {
+			return res.status(403).json({ message: "appointment does not belong to patient" });
+		}
+
+		if (appointment.status !== "pending_payment" || appointment.paymentStatus !== "pending") {
+			return res.status(400).json({ message: "appointment is not approved for payment" });
+		}
+
+		if (appointment.paymentExpiresAt && appointment.paymentExpiresAt < new Date()) {
+			appointment.status = "expired";
+			appointment.paymentStatus = "failed";
+			await appointment.save();
+			return res.status(400).json({ message: "payment window expired. book again." });
+		}
+
+		return res.status(200).json({
+			eligible: true,
+			appointment: sanitizeAppointment(appointment),
+		});
+	} catch (error) {
+		return res.status(500).json({ message: "failed to validate payment eligibility", error: error.message });
 	}
 };
 
@@ -647,7 +787,7 @@ const rescheduleAppointment = async (req, res) => {
 			doctorId: appointment.doctorId,
 			appointmentDate: normalizedDate,
 			slotTime,
-			status: { $in: ["pending_payment", "confirmed", "completed"] },
+			status: { $in: ["pending", "pending_payment", "confirmed", "completed"] },
 		});
 
 		if (conflict) {
@@ -833,8 +973,12 @@ module.exports = {
 	getAvailableSlots,
 	getMyAppointments,
 	getDoctorAppointments,
+	approveAppointmentByDoctor,
+	rejectAppointmentByDoctor,
+	cancelAppointmentByDoctor,
 	confirmAppointmentPayment,
 	confirmAppointmentPaymentInternal,
+	getPaymentEligibilityInternal,
 	completeConsultation,
 	getAdminAppointments,
 	rescheduleAppointment,
