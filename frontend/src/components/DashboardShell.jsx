@@ -1,9 +1,9 @@
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { clearAuthStorage, getStoredUser } from "../utils/auth";
 
 const menuByRole = {
-	patient: ["Overview", "Appointments", "Medical Reports", "Telemedicine", "AI Assistant"],
+	patient: ["Overview", "Appointments", "Prescriptions", "Medical Reports", "Telemedicine", "AI Assistant"],
 	doctor: ["Overview", "Schedule", "Consultations", "Prescriptions", "Medical Reports", "Telemedicine"],
 	admin: ["Overview", "User Management", "Doctor Verification", "Appointment Management", "Payment Management", "Operations"],
 };
@@ -24,11 +24,10 @@ function DashboardShell({ role = "patient", title, subtitle, children, onMenuCha
 	const defaultMenuItem = initialActiveMenuItem || menuItems[0] || "Overview";
 	const [activeMenuItem, setActiveMenuItem] = useState(defaultMenuItem);
 
-	useEffect(() => {
-		if (typeof externalActiveMenuItem === "string" && externalActiveMenuItem !== activeMenuItem) {
-			setActiveMenuItem(externalActiveMenuItem);
-		}
-	}, [externalActiveMenuItem, activeMenuItem]);
+	const resolvedActiveMenuItem =
+		typeof externalActiveMenuItem === "string" && externalActiveMenuItem.length > 0
+			? externalActiveMenuItem
+			: activeMenuItem;
 
 	const handleLogout = () => {
 		clearAuthStorage();
@@ -89,13 +88,15 @@ function DashboardShell({ role = "patient", title, subtitle, children, onMenuCha
 								key={item}
 								onClick={() => handleMenuItemClick(item)}
 								className={`flex items-center justify-between rounded-xl px-3 py-2.5 text-sm font-medium transition ${
-									activeMenuItem === item
+									resolvedActiveMenuItem === item
 										? "bg-blue-50 text-blue-700"
 										: "text-slate-600 hover:bg-slate-50"
 								}`}
 							>
 								{item}
-								{activeMenuItem === item && <span className="h-1.5 w-1.5 rounded-full bg-blue-600" />}
+								{resolvedActiveMenuItem === item && (
+									<span className="h-1.5 w-1.5 rounded-full bg-blue-600" />
+								)}
 							</button>
 						))}
 					</nav>

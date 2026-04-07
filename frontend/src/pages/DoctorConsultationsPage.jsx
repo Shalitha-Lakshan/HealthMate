@@ -19,6 +19,62 @@ export default function DoctorConsultationsPage() {
 	const [selectedConsultation, setSelectedConsultation] = useState(null);
 	const [activeActionPage, setActiveActionPage] = useState("consultations");
 	const [isCompleting, setIsCompleting] = useState(false);
+	const [telemedicineRoomId, setTelemedicineRoomId] = useState("");
+
+	const getAppointmentStart = (appointment) => {
+		if (!appointment) {
+			return null;
+		}
+
+		const dateTimeValue = appointment.appointmentDateTime
+			|| (appointment.appointmentDate && appointment.slotTime
+				? `${appointment.appointmentDate}T${appointment.slotTime}:00`
+				: appointment.appointmentDate
+					? `${appointment.appointmentDate}T00:00:00`
+					: null);
+
+		if (!dateTimeValue) {
+			return null;
+		}
+
+		const parsed = new Date(dateTimeValue);
+		return Number.isNaN(parsed.getTime()) ? null : parsed;
+	};
+
+	const canJoinTelemedicine = (appointment) => {
+		if (!appointment || appointment.mode !== "online" || appointment.status !== "confirmed") {
+			return false;
+		}
+
+		const startTime = getAppointmentStart(appointment);
+		if (!startTime) {
+			return false;
+		}
+
+		return Date.now() >= startTime.getTime();
+	};
+
+	const handleJoinTelemedicine = (appointment) => {
+		const roomId = appointment?.appointmentId || appointment?._id || appointment?.id;
+		if (!roomId) {
+			return;
+		}
+		setTelemedicineRoomId(String(roomId));
+		setActiveActionPage("telemedicine");
+	};
+
+	const handleOpenPrescription = (consultation) => {
+		if (!consultation) {
+			return;
+		}
+
+		if (consultation.status !== "completed") {
+			alert("Complete the consultation first, then issue prescription.");
+			return;
+		}
+
+		setActiveActionPage("prescriptions");
+	};
 
 	useEffect(() => {
 		async function fetchConsultations() {
@@ -89,7 +145,7 @@ export default function DoctorConsultationsPage() {
 						Back to Consultations
 					</button>
 				</div>
-				<DoctorTelemedicinePage />
+				<DoctorTelemedicinePage initialRoomId={telemedicineRoomId} />
 			</div>
 		);
 	}
@@ -109,7 +165,7 @@ export default function DoctorConsultationsPage() {
 						Back to Consultations
 					</button>
 				</div>
-				<DoctorPrescriptionsPage />
+				<DoctorPrescriptionsPage consultation={selectedConsultation} />
 			</div>
 		);
 	}
@@ -281,21 +337,27 @@ export default function DoctorConsultationsPage() {
 
 								<div className="mt-6 pt-5 border-t border-slate-100 space-y-2">
 									{selectedConsultation.status === "confirmed" && selectedConsultation.mode === "online" && (
-											<button
-												onClick={() => setActiveActionPage("telemedicine")}
-												className="w-full rounded-xl bg-blue-600 px-4 py-2.5 text-sm font-semibold text-white shadow-sm hover:bg-blue-700 transition flex justify-center items-center gap-2"
-											>
+										<button
+											onClick={() => handleJoinTelemedicine(selectedConsultation)}
+											disabled={!canJoinTelemedicine(selectedConsultation)}
+											title={
+												canJoinTelemedicine(selectedConsultation)
+													? "Join telemedicine session"
+													: "Join is available at the scheduled time"
+											}
+											className="w-full rounded-xl bg-blue-600 px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition flex justify-center items-center gap-2 disabled:cursor-not-allowed disabled:bg-slate-300"
+										>
 											<svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
 												<path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z" />
 											</svg>
-											Start Video Call
+											{canJoinTelemedicine(selectedConsultation) ? "Join Video Call" : "Join at scheduled time"}
 										</button>
 									)}
 										<button
-											onClick={() => setActiveActionPage("prescriptions")}
+											onClick={() => handleOpenPrescription(selectedConsultation)}
 											className="w-full rounded-xl border border-slate-300 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 shadow-sm hover:bg-slate-50 hover:text-slate-900 transition"
 										>
-										Issue Digital Prescription
+											Issue Digital Prescription
 									</button>
 									{selectedConsultation.status === "confirmed" && (
 										<button 

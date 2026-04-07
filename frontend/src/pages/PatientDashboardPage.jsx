@@ -12,6 +12,7 @@ import {
 	fetchAvailableSlots,
 	fetchMyAppointments,
 } from "../services/appointmentApi";
+import { fetchMyPrescriptions } from "../services/prescriptionApi";
 import { completePayment, initiatePayment } from "../services/paymentApi";
 import {
 	fetchDoctors,
@@ -197,12 +198,15 @@ function PatientDashboardPage() {
 		patientName: user.name || "",
 	});
 	const [medicalReports, setMedicalReports] = useState([]);
+	const [prescriptions, setPrescriptions] = useState([]);
 	const [reportError, setReportError] = useState("");
 	const [reportSuccess, setReportSuccess] = useState("");
+	const [prescriptionError, setPrescriptionError] = useState("");
 	const [appointments, setAppointments] = useState([]);
 	const [doctors, setDoctors] = useState([]);
 	const [isLoadingDoctors, setIsLoadingDoctors] = useState(false);
 	const [isLoadingAppointments, setIsLoadingAppointments] = useState(false);
+	const [isLoadingPrescriptions, setIsLoadingPrescriptions] = useState(false);
 	const [isLoadingSlots, setIsLoadingSlots] = useState(false);
 	const [isSubmitting, setIsSubmitting] = useState(false);
 	const [isPaying, setIsPaying] = useState(false);
@@ -211,7 +215,9 @@ function PatientDashboardPage() {
 	const [deletingAppointmentId, setDeletingAppointmentId] = useState("");
 	const [deletingReportId, setDeletingReportId] = useState("");
 	const [availableSlots, setAvailableSlots] = useState([]);
+	const [slotError, setSlotError] = useState("");
 	const [reservedAppointment, setReservedAppointment] = useState(null);
+	const [telemedicineRoomId, setTelemedicineRoomId] = useState("");
 	const [profileFormData, setProfileFormData] = useState({
 		...INITIAL_PROFILE_STATE,
 		name: user.name || "",
@@ -228,6 +234,48 @@ function PatientDashboardPage() {
 		{ label: "Prescriptions", value: "12", meta: "Digital copies" },
 		{ label: "Reports", value: "08", meta: "Uploaded files" },
 	];
+
+	const getAppointmentStart = (appointment) => {
+		if (!appointment) {
+			return null;
+		}
+
+		const dateTimeValue = appointment.appointmentDateTime
+			|| (appointment.appointmentDate && appointment.slotTime
+				? `${appointment.appointmentDate}T${appointment.slotTime}:00`
+				: appointment.appointmentDate
+					? `${appointment.appointmentDate}T00:00:00`
+					: null);
+
+		if (!dateTimeValue) {
+			return null;
+		}
+
+		const parsed = new Date(dateTimeValue);
+		return Number.isNaN(parsed.getTime()) ? null : parsed;
+	};
+
+	const canJoinTelemedicine = (appointment) => {
+		if (!appointment || appointment.mode !== "online" || appointment.status !== "confirmed") {
+			return false;
+		}
+
+		const startTime = getAppointmentStart(appointment);
+		if (!startTime) {
+			return false;
+		}
+
+		return Date.now() >= startTime.getTime();
+	};
+
+	const handleJoinTelemedicine = (appointment) => {
+		const roomId = appointment?.appointmentId || appointment?._id || appointment?.id;
+		if (!roomId) {
+			return;
+		}
+		setTelemedicineRoomId(String(roomId));
+		setActiveMenuItem("Telemedicine");
+	};
 
 	const upcomingAppointments = appointments
 		.filter((appointment) => {
@@ -290,6 +338,24 @@ function PatientDashboardPage() {
 			if (showError) {
 				setReportError(error.response?.data?.message || "Failed to load medical reports.");
 			}
+		}
+	};
+
+	const loadMyPrescriptions = async ({ showError = true } = {}) => {
+		if (showError) {
+			setPrescriptionError("");
+		}
+
+		setIsLoadingPrescriptions(true);
+		try {
+			const response = await fetchMyPrescriptions();
+			setPrescriptions(response.prescriptions || []);
+		} catch (error) {
+			if (showError) {
+				setPrescriptionError(error.response?.data?.message || "Failed to load prescriptions.");
+			}
+		} finally {
+			setIsLoadingPrescriptions(false);
 		}
 	};
 
@@ -373,19 +439,29 @@ function PatientDashboardPage() {
 	const loadSlots = async (doctorId, date) => {
 		if (!doctorId || !date) {
 			setAvailableSlots([]);
+			setSlotError("");
 			return;
 		}
 
 		setIsLoadingSlots(true);
+		setSlotError("");
 		try {
 			const response = await fetchAvailableSlots({ doctorId, date });
 			setAvailableSlots(response.slots || []);
-		} catch {
+		} catch (error) {
+			setSlotError(error.response?.data?.message || "Failed to load available slots.");
 			setAvailableSlots([]);
 		} finally {
 			setIsLoadingSlots(false);
 		}
 	};
+
+	useEffect(() => {
+		if (!formData.doctorId || !formData.appointmentDate) {
+			return;
+		}
+		loadSlots(formData.doctorId, formData.appointmentDate);
+	}, [formData.doctorId, formData.appointmentDate]);
 
 	const handleAppointmentChange = (event) => {
 		const { name, value } = event.target;
@@ -416,6 +492,7 @@ function PatientDashboardPage() {
 				slotTime: "",
 			}));
 			setAvailableSlots([]);
+			setSlotError("");
 			setReservedAppointment(null);
 			return;
 		}
@@ -434,6 +511,7 @@ function PatientDashboardPage() {
 				slotTime: "",
 			}));
 			setAvailableSlots([]);
+			setSlotError("");
 			setReservedAppointment(null);
 			return;
 		}
@@ -460,7 +538,6 @@ function PatientDashboardPage() {
 		if (name === "appointmentDate") {
 			setFormData((prev) => ({ ...prev, appointmentDate: value, slotTime: "" }));
 			setReservedAppointment(null);
-			loadSlots(formData.doctorId, value);
 			return;
 		}
 
@@ -912,7 +989,7 @@ function PatientDashboardPage() {
 	};
 
 	useEffect(() => {
-		if (activeMenuItem !== "Appointments" && activeMenuItem !== "Medical Reports") {
+		if (activeMenuItem !== "Appointments" && activeMenuItem !== "Medical Reports" && activeMenuItem !== "Prescriptions") {
 			return;
 		}
 
@@ -920,6 +997,11 @@ function PatientDashboardPage() {
 
 		if (activeMenuItem === "Appointments") {
 			loadAppointments();
+			return;
+		}
+
+		if (activeMenuItem === "Prescriptions") {
+			loadMyPrescriptions();
 			return;
 		}
 
@@ -1185,16 +1267,30 @@ function PatientDashboardPage() {
 								className="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
 							>
 								<option value="">
-									{isLoadingSlots ? "Loading slots..." : formData.appointmentDate ? "Select available slot" : "Select date first"}
+									{isLoadingSlots
+										? "Loading slots..."
+										: formData.appointmentDate
+											? availableSlots.length > 0
+												? "Select available slot"
+												: "No available slots"
+											: "Select date first"}
 								</option>
 								{availableSlots
-									.filter((slot) => slot.available)
-									.map((slot) => (
-										<option key={slot.time} value={slot.time}>
-											{slot.time}
-										</option>
-									))}
+									.filter((slot) => (typeof slot === "string" ? true : slot.available))
+									.map((slot) => {
+										const value = typeof slot === "string" ? slot : slot.time;
+										return (
+											<option key={value} value={value}>
+												{value}
+											</option>
+										);
+									})}
 							</select>
+							{slotError && (
+								<p className="mt-2 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-700">
+									{slotError}
+								</p>
+							)}
 						</div>
 					</div>
 
@@ -1334,6 +1430,21 @@ function PatientDashboardPage() {
 									</>
 								)}
 								<p className="mt-2 text-xs text-slate-600">Reason: {appointment.reason}</p>
+								{appointment.status === "confirmed" && appointment.mode === "online" && (
+									<button
+										type="button"
+										onClick={() => handleJoinTelemedicine(appointment)}
+										disabled={!canJoinTelemedicine(appointment)}
+										title={
+											canJoinTelemedicine(appointment)
+												? "Join telemedicine session"
+												: "Join is available at the scheduled time"
+										}
+										className="mt-3 rounded-lg bg-blue-600 px-3 py-2 text-xs font-semibold text-white transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:bg-slate-300"
+									>
+										{canJoinTelemedicine(appointment) ? "Join Video Call" : "Join at scheduled time"}
+									</button>
+								)}
 								{appointment.status === "expired" && (
 									<button
 										type="button"
@@ -1581,6 +1692,80 @@ function PatientDashboardPage() {
 		</div>
 	);
 
+	const renderPrescriptions = () => (
+		<section className="rounded-2xl border border-slate-200 bg-white p-5">
+			<div className="mb-4 flex items-center justify-between">
+				<div>
+					<h2 className="text-sm font-semibold text-slate-900">My Prescriptions</h2>
+					<p className="mt-1 text-xs text-slate-500">Issued by doctors after completed consultations.</p>
+				</div>
+				<button
+					type="button"
+					onClick={() => loadMyPrescriptions()}
+					disabled={isLoadingPrescriptions}
+					className="text-xs font-semibold text-blue-700 disabled:text-blue-300"
+				>
+					{isLoadingPrescriptions ? "Loading..." : "Refresh"}
+				</button>
+			</div>
+
+			{prescriptionError && (
+				<p className="mb-4 rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{prescriptionError}</p>
+			)}
+
+			{isLoadingPrescriptions ? (
+				<p className="rounded-xl border border-dashed border-slate-300 bg-slate-50 px-3 py-4 text-sm text-slate-500">
+					Loading prescriptions...
+				</p>
+			) : prescriptions.length === 0 ? (
+				<p className="rounded-xl border border-dashed border-slate-300 bg-slate-50 px-3 py-4 text-sm text-slate-500">
+					No prescriptions issued yet.
+				</p>
+			) : (
+				<div className="space-y-3">
+					{prescriptions.map((prescription) => (
+						<div key={prescription.id || prescription.prescriptionId} className="rounded-xl border border-slate-200 bg-slate-50 p-4">
+							<div className="flex items-center justify-between gap-2">
+								<div>
+									<p className="text-[11px] font-semibold uppercase tracking-wide text-blue-700">
+										Prescription ID: {prescription.prescriptionId}
+									</p>
+									<p className="mt-1 text-sm font-semibold text-slate-900">Dr. {prescription.doctorName}</p>
+								</div>
+								<span className="rounded-lg bg-emerald-100 px-2 py-1 text-[11px] font-semibold uppercase text-emerald-700">
+									{prescription.status || "Issued"}
+								</span>
+							</div>
+
+							<p className="mt-3 text-xs font-semibold uppercase tracking-wide text-slate-500">Diagnosis</p>
+							<p className="mt-1 text-sm text-slate-700">{prescription.diagnosis}</p>
+
+							{Array.isArray(prescription.medications) && prescription.medications.length > 0 && (
+								<div className="mt-3 rounded-lg border border-slate-200 bg-white p-3">
+									<p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Medication</p>
+									{prescription.medications.map((medication, index) => (
+										<p key={`${prescription.prescriptionId}-${index}`} className="mt-1 text-xs text-slate-700">
+											{medication.name} • {medication.dosage} • {medication.frequency}
+											{medication.duration ? ` • ${medication.duration}` : ""}
+										</p>
+									))}
+								</div>
+							)}
+
+							<p className="mt-3 text-xs text-slate-500">
+								Issued: {formatAppointmentDate(prescription.issuedAt || prescription.createdAt)}
+							</p>
+							{prescription.appointmentReference && (
+								<p className="mt-1 text-xs text-slate-500">Consultation ID: {prescription.appointmentReference}</p>
+							)}
+							{prescription.notes && <p className="mt-2 text-xs text-slate-600">Notes: {prescription.notes}</p>}
+						</div>
+					))}
+				</div>
+			)}
+		</section>
+	);
+
 	return (
 		<DashboardShell
 			role="patient"
@@ -1593,8 +1778,10 @@ function PatientDashboardPage() {
 		>
 			{activeMenuItem === "Medical Reports" ? (
 				renderMedicalReports()
+			) : activeMenuItem === "Prescriptions" ? (
+				renderPrescriptions()
 			) : activeMenuItem === "Telemedicine" ? (
-				<PatientTelemedicinePage />
+				<PatientTelemedicinePage initialRoomId={telemedicineRoomId} />
 			) : activeMenuItem === "Appointments" ? (
 				renderAppointments()
 			) : activeMenuItem === "AI Assistant" ? (

@@ -11,6 +11,7 @@ import { DOCTOR_SPECIALIZATIONS } from "../constants/doctorSpecializations";
 
 function DoctorDashboardPage() {
 	const [activeMenuItem, setActiveMenuItem] = useState("Overview");
+	const [telemedicineRoomId, setTelemedicineRoomId] = useState("");
 	const [user, setUser] = useState(() => getStoredUser() || {});
 	const doctorProfile = user.doctorProfile || {};
 	const [profileMessage, setProfileMessage] = useState({ type: "idle", text: "" });
@@ -39,6 +40,13 @@ function DoctorDashboardPage() {
 
 	const handleManageConsultationQueue = () => {
 		setActiveMenuItem("Consultations");
+	};
+
+	const handleOpenTelemedicineFromAppointment = (roomId) => {
+		if (roomId) {
+			setTelemedicineRoomId(String(roomId));
+		}
+		setActiveMenuItem("Telemedicine");
 	};
 
 	const handleProfileInputChange = (event) => {
@@ -172,9 +180,9 @@ function DoctorDashboardPage() {
 			subtitle="Manage availability, patient consultations, and issue digital prescriptions."
 		>
 			{activeMenuItem === "Telemedicine" ? (
-				<DoctorTelemedicinePage />
+				<DoctorTelemedicinePage initialRoomId={telemedicineRoomId} />
 			) : activeMenuItem === "Schedule" ? (
-				<DoctorSchedulePage />
+				<DoctorSchedulePage onOpenTelemedicine={handleOpenTelemedicineFromAppointment} />
 			) : activeMenuItem === "Consultations" ? (
 				<DoctorConsultationsPage />
 			) : activeMenuItem === "Prescriptions" ? (
