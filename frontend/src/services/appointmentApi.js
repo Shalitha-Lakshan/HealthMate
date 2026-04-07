@@ -67,11 +67,6 @@ export const cancelDoctorAppointment = async (appointmentId) => {
 	return response.data;
 };
 
-export const deleteExpiredAppointment = async (appointmentId) => {
-	const response = await appointmentApi.delete(`/${appointmentId}`);
-	return response.data;
-};
-
 export const createAppointment = createAppointmentHold;
 
 export const fetchAdminAppointments = async (params) => {
