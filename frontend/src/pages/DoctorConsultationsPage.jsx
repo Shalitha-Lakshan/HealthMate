@@ -51,7 +51,10 @@ export default function DoctorConsultationsPage() {
 			return false;
 		}
 
-		return Date.now() >= startTime.getTime();
+		const now = Date.now();
+		const start = startTime.getTime();
+		const end = start + 60 * 60 * 1000;
+		return now >= start && now <= end;
 	};
 
 	const handleJoinTelemedicine = (appointment) => {
@@ -330,14 +333,14 @@ export default function DoctorConsultationsPage() {
 											title={
 												canJoinTelemedicine(selectedConsultation)
 													? "Join telemedicine session"
-													: "Join is available at the scheduled time"
+													: "Join is available only within one hour from the scheduled time"
 											}
 											className="w-full rounded-xl bg-blue-600 px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition flex justify-center items-center gap-2 disabled:cursor-not-allowed disabled:bg-slate-300"
 										>
 											<svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
 												<path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z" />
 											</svg>
-											{canJoinTelemedicine(selectedConsultation) ? "Join Video Call" : "Join at scheduled time"}
+											{canJoinTelemedicine(selectedConsultation) ? "Join Video Call" : "Join unavailable"}
 										</button>
 									)}
 										<button

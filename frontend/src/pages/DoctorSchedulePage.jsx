@@ -214,7 +214,10 @@ function DoctorSchedulePage({ onOpenTelemedicine = () => {} }) {
 			return false;
 		}
 
-		return Date.now() >= startTime.getTime();
+		const now = Date.now();
+		const start = startTime.getTime();
+		const end = start + 60 * 60 * 1000;
+		return now >= start && now <= end;
 	};
 
 	const handleJoinTelemedicine = (appointment) => {
@@ -607,11 +610,11 @@ function DoctorSchedulePage({ onOpenTelemedicine = () => {} }) {
 									title={
 										canJoinTelemedicine(selectedAppointment)
 											? "Join telemedicine session"
-											: "Join is available at the scheduled time"
+											: "Join is available only within one hour from the scheduled time"
 									}
 									className="rounded-xl bg-blue-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:bg-slate-300"
 								>
-									{canJoinTelemedicine(selectedAppointment) ? "Join Video Call" : "Join at scheduled time"}
+									{canJoinTelemedicine(selectedAppointment) ? "Join Video Call" : "Join unavailable"}
 								</button>
 							)}
 						</div>
