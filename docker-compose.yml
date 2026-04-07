@@ -83,6 +83,8 @@ services:
   ai-service:
     build:
       context: ./backend/services/ai-service
+    env_file:
+      - ./backend/services/ai-service/.env
     ports:
       - "5010:5010"
     restart: unless-stopped
