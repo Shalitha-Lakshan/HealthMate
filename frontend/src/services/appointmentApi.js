@@ -47,6 +47,11 @@ export const completeConsultation = async (appointmentId) => {
 	return response.data;
 };
 
+export const deleteExpiredAppointment = async (appointmentId) => {
+	const response = await appointmentApi.delete(`/${appointmentId}`);
+	return response.data;
+};
+
 export const approveDoctorAppointment = async (appointmentId) => {
 	const response = await appointmentApi.patch(`/${appointmentId}/doctor-approve`);
 	return response.data;

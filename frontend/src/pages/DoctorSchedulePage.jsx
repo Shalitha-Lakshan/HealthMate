@@ -9,7 +9,7 @@ import { getDoctorAvailability, updateDoctorAvailability } from "../services/doc
 import Calendar from "react-calendar";
 import "react-calendar/dist/Calendar.css";
 
-function DoctorSchedulePage() {
+function DoctorSchedulePage({ onOpenTelemedicine = () => {} }) {
 	const [activeTab, setActiveTab] = useState("calendar");
 	const [selectedDate, setSelectedDate] = useState(new Date());
 	const [appointments, setAppointments] = useState([]);
@@ -215,6 +215,11 @@ function DoctorSchedulePage() {
 		}
 
 		return Date.now() >= startTime.getTime();
+	};
+
+	const handleJoinTelemedicine = (appointment) => {
+		const roomId = appointment?.appointmentId || appointment?._id || appointment?.id;
+		onOpenTelemedicine(roomId);
 	};
 
 	const appointmentDateKeys = useMemo(() => {
@@ -596,10 +601,8 @@ function DoctorSchedulePage() {
 								</>
 							)}
 							{normalizeStatus(selectedAppointment.status) === "confirmed" && selectedAppointment.mode === "online" && (
-								<button className="rounded-xl bg-blue-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-blue-700">
-									Start Video Call
-							{selectedAppointment.status === "confirmed" && selectedAppointment.mode === "online" && (
 								<button
+									onClick={() => handleJoinTelemedicine(selectedAppointment)}
 									disabled={!canJoinTelemedicine(selectedAppointment)}
 									title={
 										canJoinTelemedicine(selectedAppointment)
