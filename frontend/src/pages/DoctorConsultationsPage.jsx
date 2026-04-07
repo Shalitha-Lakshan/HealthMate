@@ -63,6 +63,19 @@ export default function DoctorConsultationsPage() {
 		setActiveActionPage("telemedicine");
 	};
 
+	const handleOpenPrescription = (consultation) => {
+		if (!consultation) {
+			return;
+		}
+
+		if (consultation.status !== "completed") {
+			alert("Complete the consultation first, then issue prescription.");
+			return;
+		}
+
+		setActiveActionPage("prescriptions");
+	};
+
 	useEffect(() => {
 		async function fetchConsultations() {
 			try {
@@ -152,7 +165,7 @@ export default function DoctorConsultationsPage() {
 						Back to Consultations
 					</button>
 				</div>
-				<DoctorPrescriptionsPage />
+				<DoctorPrescriptionsPage consultation={selectedConsultation} />
 			</div>
 		);
 	}
@@ -341,10 +354,10 @@ export default function DoctorConsultationsPage() {
 										</button>
 									)}
 										<button
-											onClick={() => setActiveActionPage("prescriptions")}
+											onClick={() => handleOpenPrescription(selectedConsultation)}
 											className="w-full rounded-xl border border-slate-300 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 shadow-sm hover:bg-slate-50 hover:text-slate-900 transition"
 										>
-										Issue Digital Prescription
+											Issue Digital Prescription
 									</button>
 									{selectedConsultation.status === "confirmed" && (
 										<button 
