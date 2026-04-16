@@ -10,6 +10,7 @@ const {
 	confirmAppointmentPayment,
 	confirmAppointmentPaymentInternal,
 	getPaymentEligibilityInternal,
+	getAppointmentInternal,
 	completeConsultation,
 	getAdminAppointments,
 	rescheduleAppointment,
@@ -24,6 +25,7 @@ const router = express.Router();
 
 router.post("/internal/payment-confirmation", confirmAppointmentPaymentInternal);
 router.get("/internal/:appointmentId/payment-eligibility", getPaymentEligibilityInternal);
+router.get("/internal/:appointmentId", getAppointmentInternal);
 
 router.use(requireAuth);
 

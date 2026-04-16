@@ -12,6 +12,7 @@ import {
 	fetchAvailableSlots,
 	fetchMyAppointments,
 } from "../services/appointmentApi";
+import { fetchMyPrescriptions } from "../services/prescriptionApi";
 import { completePayment, initiatePayment } from "../services/paymentApi";
 import {
 	fetchDoctors,
@@ -197,12 +198,15 @@ function PatientDashboardPage() {
 		patientName: user.name || "",
 	});
 	const [medicalReports, setMedicalReports] = useState([]);
+	const [prescriptions, setPrescriptions] = useState([]);
 	const [reportError, setReportError] = useState("");
 	const [reportSuccess, setReportSuccess] = useState("");
+	const [prescriptionError, setPrescriptionError] = useState("");
 	const [appointments, setAppointments] = useState([]);
 	const [doctors, setDoctors] = useState([]);
 	const [isLoadingDoctors, setIsLoadingDoctors] = useState(false);
 	const [isLoadingAppointments, setIsLoadingAppointments] = useState(false);
+	const [isLoadingPrescriptions, setIsLoadingPrescriptions] = useState(false);
 	const [isLoadingSlots, setIsLoadingSlots] = useState(false);
 	const [isSubmitting, setIsSubmitting] = useState(false);
 	const [isPaying, setIsPaying] = useState(false);
@@ -337,6 +341,24 @@ function PatientDashboardPage() {
 			if (showError) {
 				setReportError(error.response?.data?.message || "Failed to load medical reports.");
 			}
+		}
+	};
+
+	const loadMyPrescriptions = async ({ showError = true } = {}) => {
+		if (showError) {
+			setPrescriptionError("");
+		}
+
+		setIsLoadingPrescriptions(true);
+		try {
+			const response = await fetchMyPrescriptions();
+			setPrescriptions(response.prescriptions || []);
+		} catch (error) {
+			if (showError) {
+				setPrescriptionError(error.response?.data?.message || "Failed to load prescriptions.");
+			}
+		} finally {
+			setIsLoadingPrescriptions(false);
 		}
 	};
 
@@ -970,7 +992,7 @@ function PatientDashboardPage() {
 	};
 
 	useEffect(() => {
-		if (activeMenuItem !== "Appointments" && activeMenuItem !== "Medical Reports") {
+		if (activeMenuItem !== "Appointments" && activeMenuItem !== "Medical Reports" && activeMenuItem !== "Prescriptions") {
 			return;
 		}
 
@@ -978,6 +1000,11 @@ function PatientDashboardPage() {
 
 		if (activeMenuItem === "Appointments") {
 			loadAppointments();
+			return;
+		}
+
+		if (activeMenuItem === "Prescriptions") {
+			loadMyPrescriptions();
 			return;
 		}
 
@@ -1047,7 +1074,7 @@ function PatientDashboardPage() {
 				<img
 					src="/overview-banner.png"
 					alt="Health services banner"
-					className="h-60 w-full object-cover sm:h-72 lg:h-[30rem]"
+					className="h-60 w-full object-cover sm:h-72 lg:h-120"
 				/>
 				<button
 					type="button"
@@ -1668,6 +1695,80 @@ function PatientDashboardPage() {
 		</div>
 	);
 
+	const renderPrescriptions = () => (
+		<section className="rounded-2xl border border-slate-200 bg-white p-5">
+			<div className="mb-4 flex items-center justify-between">
+				<div>
+					<h2 className="text-sm font-semibold text-slate-900">My Prescriptions</h2>
+					<p className="mt-1 text-xs text-slate-500">Issued by doctors after completed consultations.</p>
+				</div>
+				<button
+					type="button"
+					onClick={() => loadMyPrescriptions()}
+					disabled={isLoadingPrescriptions}
+					className="text-xs font-semibold text-blue-700 disabled:text-blue-300"
+				>
+					{isLoadingPrescriptions ? "Loading..." : "Refresh"}
+				</button>
+			</div>
+
+			{prescriptionError && (
+				<p className="mb-4 rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{prescriptionError}</p>
+			)}
+
+			{isLoadingPrescriptions ? (
+				<p className="rounded-xl border border-dashed border-slate-300 bg-slate-50 px-3 py-4 text-sm text-slate-500">
+					Loading prescriptions...
+				</p>
+			) : prescriptions.length === 0 ? (
+				<p className="rounded-xl border border-dashed border-slate-300 bg-slate-50 px-3 py-4 text-sm text-slate-500">
+					No prescriptions issued yet.
+				</p>
+			) : (
+				<div className="space-y-3">
+					{prescriptions.map((prescription) => (
+						<div key={prescription.id || prescription.prescriptionId} className="rounded-xl border border-slate-200 bg-slate-50 p-4">
+							<div className="flex items-center justify-between gap-2">
+								<div>
+									<p className="text-[11px] font-semibold uppercase tracking-wide text-blue-700">
+										Prescription ID: {prescription.prescriptionId}
+									</p>
+									<p className="mt-1 text-sm font-semibold text-slate-900">Dr. {prescription.doctorName}</p>
+								</div>
+								<span className="rounded-lg bg-emerald-100 px-2 py-1 text-[11px] font-semibold uppercase text-emerald-700">
+									{prescription.status || "Issued"}
+								</span>
+							</div>
+
+							<p className="mt-3 text-xs font-semibold uppercase tracking-wide text-slate-500">Diagnosis</p>
+							<p className="mt-1 text-sm text-slate-700">{prescription.diagnosis}</p>
+
+							{Array.isArray(prescription.medications) && prescription.medications.length > 0 && (
+								<div className="mt-3 rounded-lg border border-slate-200 bg-white p-3">
+									<p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Medication</p>
+									{prescription.medications.map((medication, index) => (
+										<p key={`${prescription.prescriptionId}-${index}`} className="mt-1 text-xs text-slate-700">
+											{medication.name} • {medication.dosage} • {medication.frequency}
+											{medication.duration ? ` • ${medication.duration}` : ""}
+										</p>
+									))}
+								</div>
+							)}
+
+							<p className="mt-3 text-xs text-slate-500">
+								Issued: {formatAppointmentDate(prescription.issuedAt || prescription.createdAt)}
+							</p>
+							{prescription.appointmentReference && (
+								<p className="mt-1 text-xs text-slate-500">Consultation ID: {prescription.appointmentReference}</p>
+							)}
+							{prescription.notes && <p className="mt-2 text-xs text-slate-600">Notes: {prescription.notes}</p>}
+						</div>
+					))}
+				</div>
+			)}
+		</section>
+	);
+
 	return (
 		<DashboardShell
 			role="patient"
@@ -1680,6 +1781,8 @@ function PatientDashboardPage() {
 		>
 			{activeMenuItem === "Medical Reports" ? (
 				renderMedicalReports()
+			) : activeMenuItem === "Prescriptions" ? (
+				renderPrescriptions()
 			) : activeMenuItem === "Telemedicine" ? (
 				<PatientTelemedicinePage initialRoomId={telemedicineRoomId} />
 			) : activeMenuItem === "Appointments" ? (

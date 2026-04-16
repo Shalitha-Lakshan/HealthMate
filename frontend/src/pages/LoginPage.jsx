@@ -25,7 +25,11 @@ function LoginPage() {
 			localStorage.setItem("healthmate_user", JSON.stringify(response.user));
 			navigate(getDashboardPathForRole(response.user.role));
 		} catch (error) {
-			setErrorMessage(error.response?.data?.message || "Unable to login. Please try again.");
+			if (!error?.response) {
+				setErrorMessage("Unable to reach login service. Please try again in a moment.");
+			} else {
+				setErrorMessage(error.response?.data?.message || "Unable to login. Please try again.");
+			}
 		} finally {
 			setIsLoading(false);
 		}
