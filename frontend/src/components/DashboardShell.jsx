@@ -12,9 +12,8 @@ function DashboardShell({ role = "patient", title, subtitle, children, onMenuCha
 	const navigate = useNavigate();
 	const user = getStoredUser() || {};
 	const [isSidebarOpen, setIsSidebarOpen] = useState(false);
-	const profileName = user.name || "User";
-	const profilePhoto = user.profilePhoto || "";
-	const profileInitials = profileName
+	const profilePhoto = user.profilePhoto || user.patientProfile?.photoData || "";
+	const profileInitials = (user.name || "User")
 		.split(" ")
 		.filter(Boolean)
 		.slice(0, 2)
@@ -52,14 +51,6 @@ function DashboardShell({ role = "patient", title, subtitle, children, onMenuCha
 
 		const destination = dashboardPathByRole[role] || "/dashboard";
 		navigate(destination, { state: { activeMenuItem: item } });
-	};
-
-	const handleOpenProfile = () => {
-		setActiveMenuItem("Profile");
-		if (typeof onMenuChange === "function") {
-			onMenuChange("Profile");
-		}
-		setIsSidebarOpen(false);
 	};
 
 	return (
@@ -112,8 +103,23 @@ function DashboardShell({ role = "patient", title, subtitle, children, onMenuCha
 
 					<div className="mt-6 rounded-2xl border border-blue-100 bg-blue-50/70 p-4">
 						<p className="text-xs uppercase tracking-wide text-slate-500">Signed In As</p>
-						<p className="mt-2 text-sm font-semibold text-slate-900">{user.name || "User"}</p>
-						<p className="mt-1 text-xs text-slate-500">{user.email || "No email"}</p>
+						<div className="mt-3 flex items-center gap-3">
+							{profilePhoto ? (
+								<img
+									src={profilePhoto}
+									alt="Profile"
+									className="h-12 w-12 rounded-xl border border-slate-200 object-cover"
+								/>
+							) : (
+								<div className="flex h-12 w-12 items-center justify-center rounded-xl bg-slate-900 text-sm font-bold text-white">
+									{profileInitials}
+								</div>
+							)}
+							<div className="min-w-0">
+								<p className="truncate text-sm font-semibold text-slate-900">{user.name || "User"}</p>
+								<p className="truncate text-xs text-slate-500">{user.email || "No email"}</p>
+							</div>
+						</div>
 						<p className="mt-3 inline-flex rounded-lg bg-slate-200 px-2 py-1 text-[11px] font-semibold uppercase text-slate-700">
 							{user.role || role}
 						</p>
@@ -131,27 +137,6 @@ function DashboardShell({ role = "patient", title, subtitle, children, onMenuCha
 							Profile
 						</button>
 					)}
-					<button
-						type="button"
-						onClick={handleOpenProfile}
-						className="mt-auto flex w-full items-center gap-3 rounded-2xl border border-slate-200 bg-slate-50 p-3 text-left transition hover:border-blue-200 hover:bg-blue-50"
-					>
-						{profilePhoto ? (
-							<img
-								src={profilePhoto}
-								alt="Profile"
-								className="h-11 w-11 rounded-xl border border-slate-200 object-cover"
-							/>
-						) : (
-							<div className="flex h-11 w-11 items-center justify-center rounded-xl bg-slate-900 text-xs font-bold text-white">
-								{profileInitials}
-							</div>
-						)}
-						<div className="min-w-0">
-							<p className="truncate text-sm font-semibold text-slate-900">{profileName}</p>
-							<p className="text-xs text-slate-500">Open Profile</p>
-						</div>
-					</button>
 					</div>
 				</aside>
 
