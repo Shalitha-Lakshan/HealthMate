@@ -25,10 +25,18 @@ function PatientTelemedicinePage({ initialRoomId = "" }) {
 		setAgoraSession(null);
 
 		try {
+			const token = localStorage.getItem("healthmate_token");
+			if (!token) {
+				throw new Error("Please log in again to join a session.");
+			}
+
 			const response = await fetch(`${TELEMEDICINE_BASE_URL}/api/telemedicine/sessions`, {
 				method: "POST",
-				headers: { "Content-Type": "application/json" },
-				body: JSON.stringify({ roomId, displayName, role: "patient" }),
+				headers: {
+					"Content-Type": "application/json",
+					Authorization: `Bearer ${token}`,
+				},
+				body: JSON.stringify({ roomId, displayName }),
 			});
 
 			const payload = await response.json().catch(() => ({}));

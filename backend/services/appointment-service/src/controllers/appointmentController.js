@@ -450,10 +450,19 @@ const getDoctorAppointments = async (req, res) => {
 	try {
 		await releaseExpiredPendingPayments();
 		const { doctorId } = req.params;
+		const requesterId = getRequesterId(req.user);
+		if (!requesterId) {
+			return res.status(401).json({ message: "invalid token payload" });
+		}
+
+		if (doctorId && String(doctorId) !== String(requesterId)) {
+			return res.status(403).json({ message: "you can only view your own appointments" });
+		}
+
 		const query = {
 			$or: [
-				{ doctorId },
-				{ $expr: { $eq: [{ $toString: "$doctorId" }, doctorId] } }
+				{ doctorId: requesterId },
+				{ $expr: { $eq: [{ $toString: "$doctorId" }, requesterId] } }
 			]
 		};
 		const appointments = await Appointment.find(query).sort({ appointmentDateTime: 1 });
@@ -721,11 +730,13 @@ const getAppointmentInternal = async (req, res) => {
 		}
 
 		const { appointmentId } = req.params;
-		if (!Types.ObjectId.isValid(appointmentId)) {
-			return res.status(400).json({ message: "invalid appointment id" });
+		if (!appointmentId) {
+			return res.status(400).json({ message: "appointment id is required" });
 		}
 
-		const appointment = await Appointment.findById(appointmentId);
+		const appointment = Types.ObjectId.isValid(appointmentId)
+			? await Appointment.findById(appointmentId)
+			: await Appointment.findOne({ appointmentId: String(appointmentId).trim() });
 		if (!appointment) {
 			return res.status(404).json({ message: "appointment not found" });
 		}
