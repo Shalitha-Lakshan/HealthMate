@@ -1,0 +1,128 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: auth-service-config
+  namespace: healthmate
+data:
+  PORT: "5001"
+  JWT_EXPIRES_IN: "1d"
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: patient-service-config
+  namespace: healthmate
+data:
+  PORT: "5002"
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: doctor-service-config
+  namespace: healthmate
+data:
+  PORT: "5003"
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: appointment-service-config
+  namespace: healthmate
+data:
+  PORT: "5004"
+  APPOINTMENT_TIMEZONE_OFFSET: "+05:30"
+  APPOINTMENT_PAYMENT_HOLD_MINUTES: "10"
+  DEFAULT_CONSULTATION_FEE: "3500"
+  AUTH_SERVICE_URL: "http://auth-service:5001/api/auth"
+  NOTIFICATION_SERVICE_URL: "http://notification-service:5006/api/notifications"
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: payment-service-config
+  namespace: healthmate
+data:
+  PORT: "5005"
+  APPOINTMENT_SERVICE_URL: "http://appointment-service:5004/api/appointments"
+  PAYMENT_SUCCESS_URL: "http://healthmate.local/dashboard/patient?payment=success"
+  PAYMENT_CANCEL_URL: "http://healthmate.local/dashboard/patient?payment=cancel"
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: notification-service-config
+  namespace: healthmate
+data:
+  PORT: "5006"
+  WHATSAPP_ENABLED: "false"
+  WHATSAPP_SESSION_NAME: "healthmate-notifier"
+  WHATSAPP_AUTH_PATH: "/app/.wwebjs_auth"
+  NOTIFICATION_RETRY_ATTEMPTS: "2"
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: telemedicine-service-config
+  namespace: healthmate
+data:
+  PORT: "5007"
+  AGORA_TOKEN_EXPIRE_SECONDS: "3600"
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: prescription-service-config
+  namespace: healthmate
+data:
+  PORT: "5008"
+  APPOINTMENT_SERVICE_URL: "http://appointment-service:5004/api/appointments"
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: admin-service-config
+  namespace: healthmate
+data:
+  PORT: "5009"
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: ai-service-config
+  namespace: healthmate
+data:
+  PORT: "5010"
+  GROQ_MODEL: "llama-3.3-70b-versatile"
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: gateway-config
+  namespace: healthmate
+data:
+  PORT: "5000"
+  AUTH_SERVICE_URL: "http://auth-service:5001"
+  PATIENT_SERVICE_URL: "http://patient-service:5002"
+  DOCTOR_SERVICE_URL: "http://doctor-service:5003"
+  APPOINTMENT_SERVICE_URL: "http://appointment-service:5004"
+  PAYMENT_SERVICE_URL: "http://payment-service:5005"
+  NOTIFICATION_SERVICE_URL: "http://notification-service:5006"
+  TELEMEDICINE_SERVICE_URL: "http://telemedicine-service:5007"
+  PRESCRIPTION_SERVICE_URL: "http://prescription-service:5008"
+  ADMIN_SERVICE_URL: "http://admin-service:5009"
+  AI_SERVICE_URL: "http://ai-service:5010"
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: frontend-config
+  namespace: healthmate
+data:
+  VITE_AUTH_API_URL: "http://healthmate.local/api/auth"
+  VITE_APPOINTMENT_API_URL: "http://healthmate.local/api/appointments"
+  VITE_PRESCRIPTION_API_URL: "http://healthmate.local/api/prescriptions"
+  VITE_DOCTOR_SERVICE_URL: "http://healthmate.local/api/doctors"
+  VITE_PAYMENT_API_URL: "http://healthmate.local/api/payments"
+  VITE_ADMIN_API_URL: "http://healthmate.local/api/admin"
+  VITE_TELEMEDICINE_BASE_URL: "http://healthmate.local/api/telemedicine"
+  VITE_AI_BASE_URL: "http://healthmate.local/api/ai"

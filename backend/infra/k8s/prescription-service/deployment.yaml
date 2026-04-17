@@ -1,0 +1,47 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: prescription-service
+  namespace: healthmate
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: prescription-service
+  template:
+    metadata:
+      labels:
+        app: prescription-service
+    spec:
+      containers:
+        - name: prescription-service
+          image: healthmate/prescription-service:latest
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: 5008
+          env:
+            - name: APPOINTMENT_SERVICE_URL
+              value: http://appointment-service:5004/api/appointments
+            - name: APPOINTMENT_INTERNAL_TOKEN
+              value: healthmate-internal-token
+          envFrom:
+            - configMapRef:
+                name: prescription-service-config
+                optional: true
+            - secretRef:
+                name: prescription-service-secret
+                optional: true
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: prescription-service
+  namespace: healthmate
+spec:
+  selector:
+    app: prescription-service
+  ports:
+    - protocol: TCP
+      port: 5008
+      targetPort: 5008
+  type: ClusterIP
