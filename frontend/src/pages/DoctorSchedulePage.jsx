@@ -296,10 +296,12 @@ function DoctorSchedulePage({ onOpenTelemedicine = () => {} }) {
 			return false;
 		}
 
+		// Keep UI join window consistent with telemedicine-service validation.
 		const now = Date.now();
 		const start = startTime.getTime();
-		const end = start + 60 * 60 * 1000;
-		return now >= start && now <= end;
+		const joinOpensAt = start - 15 * 60 * 1000;
+		const joinClosesAt = start + 120 * 60 * 1000;
+		return now >= joinOpensAt && now <= joinClosesAt;
 	};
 
 	const handleJoinTelemedicine = (appointment) => {
@@ -702,7 +704,7 @@ function DoctorSchedulePage({ onOpenTelemedicine = () => {} }) {
 									title={
 										canJoinTelemedicine(selectedAppointment)
 											? "Join telemedicine session"
-											: "Join is available only within one hour from the scheduled time"
+											: "Join is available from 15 minutes before until 2 hours after the scheduled time"
 									}
 									className="rounded-xl bg-blue-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:bg-slate-300"
 								>
