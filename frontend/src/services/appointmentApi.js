@@ -42,13 +42,13 @@ export const confirmAppointmentPayment = async (appointmentId, payload) => {
 	return response.data;
 };
 
-export const completeConsultation = async (appointmentId) => {
-	const response = await appointmentApi.patch(`/${appointmentId}/complete`);
+export const deleteExpiredAppointment = async (appointmentId) => {
+	const response = await appointmentApi.delete(`/${appointmentId}`);
 	return response.data;
 };
 
-export const deleteExpiredAppointment = async (appointmentId) => {
-	const response = await appointmentApi.delete(`/${appointmentId}`);
+export const completeConsultation = async (appointmentId) => {
+	const response = await appointmentApi.patch(`/${appointmentId}/complete`);
 	return response.data;
 };
 

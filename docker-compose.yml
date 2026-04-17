@@ -4,6 +4,8 @@ services:
       context: ./backend/services/auth-service
     env_file:
       - ./backend/services/auth-service/.env
+    dns:
+      - 8.8.8.8
     ports:
       - "5001:5001"
     dns:

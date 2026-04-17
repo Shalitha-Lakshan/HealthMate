@@ -265,7 +265,10 @@ function PatientDashboardPage() {
 			return false;
 		}
 
-		return Date.now() >= startTime.getTime();
+		const now = Date.now();
+		const start = startTime.getTime();
+		const end = start + 60 * 60 * 1000;
+		return now >= start && now <= end;
 	};
 
 	const handleJoinTelemedicine = (appointment) => {
@@ -1071,7 +1074,7 @@ function PatientDashboardPage() {
 				<img
 					src="/overview-banner.png"
 					alt="Health services banner"
-					className="h-60 w-full object-cover sm:h-72 lg:h-[30rem]"
+					className="h-60 w-full object-cover sm:h-72 lg:h-120"
 				/>
 				<button
 					type="button"
@@ -1438,11 +1441,11 @@ function PatientDashboardPage() {
 										title={
 											canJoinTelemedicine(appointment)
 												? "Join telemedicine session"
-												: "Join is available at the scheduled time"
+												: "Join is available only within one hour from the scheduled time"
 										}
 										className="mt-3 rounded-lg bg-blue-600 px-3 py-2 text-xs font-semibold text-white transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:bg-slate-300"
 									>
-										{canJoinTelemedicine(appointment) ? "Join Video Call" : "Join at scheduled time"}
+										{canJoinTelemedicine(appointment) ? "Join Video Call" : "Join unavailable"}
 									</button>
 								)}
 								{appointment.status === "expired" && (
