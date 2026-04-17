@@ -1,0 +1,42 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: admin-service
+  namespace: healthmate
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: admin-service
+  template:
+    metadata:
+      labels:
+        app: admin-service
+    spec:
+      containers:
+        - name: admin-service
+          image: healthmate/admin-service:latest
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: 5009
+          envFrom:
+            - configMapRef:
+                name: admin-service-config
+                optional: true
+            - secretRef:
+                name: admin-service-secret
+                optional: true
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: admin-service
+  namespace: healthmate
+spec:
+  selector:
+    app: admin-service
+  ports:
+    - protocol: TCP
+      port: 5009
+      targetPort: 5009
+  type: ClusterIP

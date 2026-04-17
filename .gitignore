@@ -6,6 +6,9 @@
 **/.env.*
 !**/.env.example
 
+# Kubernetes secrets
+backend/infra/k8s/secrets-template.yaml
+
 # Logs
 **/*.log
 

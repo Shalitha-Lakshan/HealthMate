@@ -1,0 +1,45 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: payment-service
+  namespace: healthmate
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: payment-service
+  template:
+    metadata:
+      labels:
+        app: payment-service
+    spec:
+      containers:
+        - name: payment-service
+          image: healthmate/payment-service:latest
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: 5005
+          env:
+            - name: APPOINTMENT_SERVICE_URL
+              value: http://appointment-service:5004/api/appointments
+          envFrom:
+            - configMapRef:
+                name: payment-service-config
+                optional: true
+            - secretRef:
+                name: payment-service-secret
+                optional: true
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: payment-service
+  namespace: healthmate
+spec:
+  selector:
+    app: payment-service
+  ports:
+    - protocol: TCP
+      port: 5005
+      targetPort: 5005
+  type: ClusterIP

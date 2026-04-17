@@ -1,3 +1,4 @@
+
 const { Types } = require("mongoose");
 const Appointment = require("../models/Appointment");
 
@@ -712,6 +713,31 @@ const getPaymentEligibilityInternal = async (req, res) => {
 	}
 };
 
+const getAppointmentInternal = async (req, res) => {
+	try {
+		const internalToken = req.headers["x-internal-token"];
+		if (!internalToken || internalToken !== APPOINTMENT_INTERNAL_TOKEN) {
+			return res.status(401).json({ message: "invalid internal service token" });
+		}
+
+		const { appointmentId } = req.params;
+		if (!Types.ObjectId.isValid(appointmentId)) {
+			return res.status(400).json({ message: "invalid appointment id" });
+		}
+
+		const appointment = await Appointment.findById(appointmentId);
+		if (!appointment) {
+			return res.status(404).json({ message: "appointment not found" });
+		}
+
+		return res.status(200).json({
+			appointment: sanitizeAppointment(appointment),
+		});
+	} catch (error) {
+		return res.status(500).json({ message: "failed to fetch appointment", error: error.message });
+	}
+};
+
 const getAdminAppointments = async (req, res) => {
 	try {
 		await releaseExpiredPendingPayments();
@@ -1025,6 +1051,7 @@ module.exports = {
 	confirmAppointmentPayment,
 	confirmAppointmentPaymentInternal,
 	getPaymentEligibilityInternal,
+	getAppointmentInternal,
 	completeConsultation,
 	getAdminAppointments,
 	rescheduleAppointment,

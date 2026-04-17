@@ -9,7 +9,84 @@ import { getDoctorAvailability, updateDoctorAvailability } from "../services/doc
 import Calendar from "react-calendar";
 import "react-calendar/dist/Calendar.css";
 
-function DoctorSchedulePage() {
+const WEEK_DAYS = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"];
+
+const convertTo12HourLabel = (timeValue) => {
+	if (!timeValue || typeof timeValue !== "string") {
+		return "";
+	}
+
+	const raw = timeValue.trim();
+	const twelveHourMatch = raw.match(/^(\d{1,2}):(\d{2})\s?(AM|PM)$/i);
+	if (twelveHourMatch) {
+		const hours = String(Number(twelveHourMatch[1])).padStart(2, "0");
+		const minutes = twelveHourMatch[2];
+		const meridiem = twelveHourMatch[3].toUpperCase();
+		return `${hours}:${minutes} ${meridiem}`;
+	}
+
+	const twentyFourHourMatch = raw.match(/^(\d{1,2}):(\d{2})$/);
+	if (!twentyFourHourMatch) {
+		return "";
+	}
+
+	const hours24 = Number(twentyFourHourMatch[1]);
+	const minutes = Number(twentyFourHourMatch[2]);
+	if (Number.isNaN(hours24) || Number.isNaN(minutes) || hours24 > 23 || minutes > 59) {
+		return "";
+	}
+
+	const meridiem = hours24 >= 12 ? "PM" : "AM";
+	const hours12 = hours24 % 12 || 12;
+	return `${String(hours12).padStart(2, "0")}:${String(minutes).padStart(2, "0")} ${meridiem}`;
+};
+
+const buildDefaultAvailability = () => [
+	{ day: "Monday", isWorking: true, startTime: "09:00 AM", endTime: "05:00 PM" },
+	{ day: "Tuesday", isWorking: true, startTime: "09:00 AM", endTime: "05:00 PM" },
+	{ day: "Wednesday", isWorking: true, startTime: "09:00 AM", endTime: "05:00 PM" },
+	{ day: "Thursday", isWorking: true, startTime: "09:00 AM", endTime: "05:00 PM" },
+	{ day: "Friday", isWorking: true, startTime: "09:00 AM", endTime: "05:00 PM" },
+	{ day: "Saturday", isWorking: false, startTime: "09:00 AM", endTime: "01:00 PM" },
+	{ day: "Sunday", isWorking: false, startTime: "09:00 AM", endTime: "01:00 PM" },
+];
+
+const normalizeAvailabilitySlots = (slots = []) => {
+	const defaultsByDay = buildDefaultAvailability().reduce((acc, slot) => {
+		acc[slot.day.toLowerCase()] = slot;
+		return acc;
+	}, {});
+
+	const incomingByDay = (Array.isArray(slots) ? slots : []).reduce((acc, slot) => {
+		const dayKey = String(slot?.day || "").trim().toLowerCase();
+		if (dayKey) {
+			acc[dayKey] = slot;
+		}
+		return acc;
+	}, {});
+
+	return WEEK_DAYS.map((day) => {
+		const dayKey = day.toLowerCase();
+		const defaultSlot = defaultsByDay[dayKey];
+		const incomingSlot = incomingByDay[dayKey] || null;
+
+		const startTime = convertTo12HourLabel(incomingSlot?.startTime) || defaultSlot.startTime;
+		const endTime = convertTo12HourLabel(incomingSlot?.endTime) || defaultSlot.endTime;
+		const isWorking =
+			typeof incomingSlot?.isWorking === "boolean"
+				? incomingSlot.isWorking
+				: Boolean(incomingSlot);
+
+		return {
+			day,
+			isWorking,
+			startTime,
+			endTime,
+		};
+	});
+};
+
+function DoctorSchedulePage({ onOpenTelemedicine = () => {} }) {
 	const [activeTab, setActiveTab] = useState("calendar");
 	const [selectedDate, setSelectedDate] = useState(new Date());
 	const [appointments, setAppointments] = useState([]);
@@ -34,22 +111,16 @@ function DoctorSchedulePage() {
 				} else if (activeTab === "availability") {
 					const data = await getDoctorAvailability(doctorId, token);
 					if (data && data.slots && data.slots.length > 0) {
-						setAvailability(data.slots);
+						setAvailability(normalizeAvailabilitySlots(data.slots));
 					} else {
-						// Initialize with default if not found
-						setAvailability([
-							{ day: "Monday", isWorking: true, startTime: "09:00 AM", endTime: "05:00 PM" },
-							{ day: "Tuesday", isWorking: true, startTime: "09:00 AM", endTime: "05:00 PM" },
-							{ day: "Wednesday", isWorking: true, startTime: "09:00 AM", endTime: "05:00 PM" },
-							{ day: "Thursday", isWorking: true, startTime: "09:00 AM", endTime: "05:00 PM" },
-							{ day: "Friday", isWorking: true, startTime: "09:00 AM", endTime: "05:00 PM" },
-							{ day: "Saturday", isWorking: false, startTime: "09:00 AM", endTime: "01:00 PM" },
-							{ day: "Sunday", isWorking: false, startTime: "09:00 AM", endTime: "01:00 PM" },
-						]);
+						setAvailability(buildDefaultAvailability());
 					}
 				}
 			} catch (err) {
 				console.error("Failed to load data", err);
+				if (activeTab === "availability") {
+					setAvailability(buildDefaultAvailability());
+				}
 			} finally {
 				setLoading(false);
 			}
@@ -182,6 +253,47 @@ function DoctorSchedulePage() {
 					className: "bg-purple-100 text-purple-700",
 				};
 		}
+	};
+
+	const getAppointmentStart = (appointment) => {
+		if (!appointment) {
+			return null;
+		}
+
+		const dateTimeValue = appointment.appointmentDateTime
+			|| (appointment.appointmentDate && appointment.slotTime
+				? `${appointment.appointmentDate}T${appointment.slotTime}:00`
+				: appointment.appointmentDate
+					? `${appointment.appointmentDate}T00:00:00`
+					: null);
+
+		if (!dateTimeValue) {
+			return null;
+		}
+
+		const parsed = new Date(dateTimeValue);
+		return Number.isNaN(parsed.getTime()) ? null : parsed;
+	};
+
+	const canJoinTelemedicine = (appointment) => {
+		if (!appointment || appointment.mode !== "online" || appointment.status !== "confirmed") {
+			return false;
+		}
+
+		const startTime = getAppointmentStart(appointment);
+		if (!startTime) {
+			return false;
+		}
+
+		const now = Date.now();
+		const start = startTime.getTime();
+		const end = start + 60 * 60 * 1000;
+		return now >= start && now <= end;
+	};
+
+	const handleJoinTelemedicine = (appointment) => {
+		const roomId = appointment?.appointmentId || appointment?._id || appointment?.id;
+		onOpenTelemedicine(roomId);
 	};
 
 	const appointmentDateKeys = useMemo(() => {
@@ -563,8 +675,17 @@ function DoctorSchedulePage() {
 								</>
 							)}
 							{normalizeStatus(selectedAppointment.status) === "confirmed" && selectedAppointment.mode === "online" && (
-								<button className="rounded-xl bg-blue-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-blue-700">
-									Start Video Call
+								<button
+									onClick={() => handleJoinTelemedicine(selectedAppointment)}
+									disabled={!canJoinTelemedicine(selectedAppointment)}
+									title={
+										canJoinTelemedicine(selectedAppointment)
+											? "Join telemedicine session"
+											: "Join is available only within one hour from the scheduled time"
+									}
+									className="rounded-xl bg-blue-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:bg-slate-300"
+								>
+									{canJoinTelemedicine(selectedAppointment) ? "Join Video Call" : "Join unavailable"}
 								</button>
 							)}
 						</div>

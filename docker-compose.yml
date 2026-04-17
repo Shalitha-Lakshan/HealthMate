@@ -4,8 +4,13 @@ services:
       context: ./backend/services/auth-service
     env_file:
       - ./backend/services/auth-service/.env
+    dns:
+      - 8.8.8.8
     ports:
       - "5001:5001"
+    dns:
+      - 8.8.8.8
+      - 1.1.1.1
     restart: unless-stopped
 
   patient-service:
@@ -38,6 +43,9 @@ services:
       - NOTIFICATION_SERVICE_URL=http://notification-service:5006/api/notifications
     ports:
       - "5004:5004"
+    dns:
+      - 8.8.8.8
+      - 1.1.1.1
     restart: unless-stopped
 
   payment-service:
@@ -71,6 +79,21 @@ services:
       - "5007:5007"
     restart: unless-stopped
 
+  prescription-service:
+    build:
+      context: ./backend/services/prescription-service
+    env_file:
+      - ./backend/services/prescription-service/.env
+    environment:
+      - APPOINTMENT_SERVICE_URL=http://appointment-service:5004/api/appointments
+      - APPOINTMENT_INTERNAL_TOKEN=healthmate-internal-token
+    ports:
+      - "5008:5008"
+    dns:
+      - 8.8.8.8
+      - 1.1.1.1
+    restart: unless-stopped
+
   admin-service:
     build:
       context: ./backend/services/admin-service
@@ -83,6 +106,8 @@ services:
   ai-service:
     build:
       context: ./backend/services/ai-service
+    env_file:
+      - ./backend/services/ai-service/.env
     ports:
       - "5010:5010"
     restart: unless-stopped
@@ -100,6 +125,7 @@ services:
       - PAYMENT_SERVICE_URL=http://payment-service:5005
       - NOTIFICATION_SERVICE_URL=http://notification-service:5006
       - TELEMEDICINE_SERVICE_URL=http://telemedicine-service:5007
+      - PRESCRIPTION_SERVICE_URL=http://prescription-service:5008
       - ADMIN_SERVICE_URL=http://admin-service:5009
     ports:
       - "5000:5000"
@@ -111,6 +137,7 @@ services:
       - payment-service
       - notification-service
       - telemedicine-service
+      - prescription-service
       - admin-service
       - ai-service
     restart: unless-stopped
@@ -123,7 +150,7 @@ services:
     environment:
       - VITE_AUTH_API_URL=http://localhost:5001/api/auth
       - VITE_APPOINTMENT_API_URL=http://localhost:5004/api/appointments
-      - VITE_PRESCRIPTION_API_URL=http://localhost:5008/api/prescriptions
+      - VITE_PRESCRIPTION_API_URL=http://localhost:5000/api/prescriptions
       - VITE_DOCTOR_SERVICE_URL=http://localhost:5003/api/doctors
       - VITE_PAYMENT_API_URL=http://localhost:5005/api/payments
       - VITE_ADMIN_API_URL=http://localhost:5009/api/admin
