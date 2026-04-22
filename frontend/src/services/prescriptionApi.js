@@ -29,3 +29,13 @@ export const fetchMyPrescriptions = async () => {
 	const response = await prescriptionApi.get("/my");
 	return response.data;
 };
+
+export const updatePrescription = async (prescriptionId, payload) => {
+	const response = await prescriptionApi.patch(`/${prescriptionId}`, payload);
+	return response.data;
+};
+
+export const deletePrescription = async (prescriptionId) => {
+	const response = await prescriptionApi.delete(`/${prescriptionId}`);
+	return response.data;
+};

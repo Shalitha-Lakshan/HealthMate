@@ -61,6 +61,22 @@ const sanitizePrescription = (prescription) => ({
 	updatedAt: prescription.updatedAt,
 });
 
+const normalizeMedications = (medications) => {
+	if (!Array.isArray(medications)) {
+		return [];
+	}
+
+	return medications
+		.map((medication) => ({
+			name: String(medication?.name || "").trim(),
+			dosage: String(medication?.dosage || "").trim(),
+			frequency: String(medication?.frequency || "").trim(),
+			duration: String(medication?.duration || "").trim(),
+			instructions: String(medication?.instructions || "").trim(),
+		}))
+		.filter((medication) => medication.name || medication.dosage || medication.frequency || medication.duration || medication.instructions);
+};
+
 const createPrescription = async (req, res) => {
 	try {
 		const requesterId = getRequesterId(req.user);
@@ -83,15 +99,7 @@ const createPrescription = async (req, res) => {
 			return res.status(400).json({ message: "medications must be an array" });
 		}
 
-		const normalizedMeds = medications
-			.map((medication) => ({
-				name: String(medication?.name || "").trim(),
-				dosage: String(medication?.dosage || "").trim(),
-				frequency: String(medication?.frequency || "").trim(),
-				duration: String(medication?.duration || "").trim(),
-				instructions: String(medication?.instructions || "").trim(),
-			}))
-			.filter((medication) => medication.name || medication.dosage || medication.frequency || medication.duration || medication.instructions);
+		const normalizedMeds = normalizeMedications(medications);
 
 		if (normalizedMeds.length === 0) {
 			return res.status(400).json({ message: "at least one medication entry is required" });
@@ -154,6 +162,91 @@ const createPrescription = async (req, res) => {
 	}
 };
 
+const updatePrescription = async (req, res) => {
+	try {
+		const requesterId = getRequesterId(req.user);
+		if (!requesterId) {
+			return res.status(401).json({ message: "invalid token payload" });
+		}
+
+		const { id } = req.params;
+		const { diagnosis, medications, notes } = req.body;
+
+		const prescription = await Prescription.findById(id);
+		if (!prescription) {
+			return res.status(404).json({ message: "prescription not found" });
+		}
+
+		if (String(prescription.doctorId) !== requesterId) {
+			return res.status(403).json({ message: "you can only edit your own prescriptions" });
+		}
+
+		if (diagnosis !== undefined) {
+			const trimmedDiagnosis = String(diagnosis).trim();
+			if (!trimmedDiagnosis) {
+				return res.status(400).json({ message: "diagnosis cannot be empty" });
+			}
+			prescription.diagnosis = trimmedDiagnosis;
+		}
+
+		if (medications !== undefined) {
+			const normalizedMeds = normalizeMedications(medications);
+
+			if (normalizedMeds.length === 0) {
+				return res.status(400).json({ message: "at least one medication entry is required" });
+			}
+
+			const hasInvalidMedication = normalizedMeds.some(
+				(medication) => !medication.name || !medication.dosage || !medication.frequency
+			);
+
+			if (hasInvalidMedication) {
+				return res.status(400).json({ message: "each medication requires name, dosage, and frequency" });
+			}
+
+			prescription.medications = normalizedMeds;
+		}
+
+		if (notes !== undefined) {
+			prescription.notes = String(notes || "").trim();
+		}
+
+		await prescription.save();
+
+		return res.status(200).json({
+			message: "prescription updated successfully",
+			prescription: sanitizePrescription(prescription),
+		});
+	} catch (error) {
+		return res.status(500).json({ message: "failed to update prescription", error: error.message });
+	}
+};
+
+const deletePrescription = async (req, res) => {
+	try {
+		const requesterId = getRequesterId(req.user);
+		if (!requesterId) {
+			return res.status(401).json({ message: "invalid token payload" });
+		}
+
+		const { id } = req.params;
+		const prescription = await Prescription.findById(id);
+		if (!prescription) {
+			return res.status(404).json({ message: "prescription not found" });
+		}
+
+		if (String(prescription.doctorId) !== requesterId) {
+			return res.status(403).json({ message: "you can only delete your own prescriptions" });
+		}
+
+		await Prescription.deleteOne({ _id: id });
+
+		return res.status(200).json({ message: "prescription deleted successfully" });
+	} catch (error) {
+		return res.status(500).json({ message: "failed to delete prescription", error: error.message });
+	}
+};
+
 const getMyPrescriptions = async (req, res) => {
 	try {
 		const patientId = getRequesterId(req.user);
@@ -190,4 +283,6 @@ module.exports = {
 	createPrescription,
 	getMyPrescriptions,
 	getDoctorPrescriptions,
+	updatePrescription,
+	deletePrescription,
 };
