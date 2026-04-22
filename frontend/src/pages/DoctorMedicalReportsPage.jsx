@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { deleteDoctorMedicalReport, fetchDoctorMedicalReports } from "../services/authApi";
+import { fetchDoctorMedicalReports } from "../services/authApi";
 import { deleteMedicalReportByIdentity, getMedicalReportsForDoctor } from "../services/medicalReportStore";
 import { getStoredUser } from "../utils/auth";
 
@@ -58,15 +58,6 @@ const getUserId = (user = {}) => {
 	return "";
 };
 
-const shouldUseDoctorReportFallback = (error) => {
-	if (!error?.response) {
-		return true;
-	}
-
-	const status = Number(error.response.status);
-	return [404, 405, 500, 502, 503, 504].includes(status);
-};
-
 function DoctorMedicalReportsPage() {
 	const [reports, setReports] = useState([]);
 	const [isLoading, setIsLoading] = useState(false);
@@ -98,50 +89,20 @@ function DoctorMedicalReportsPage() {
 		}
 	};
 
-	const normalizeId = (value) => {
-		if (!value) {
-			return "";
-		}
-		if (typeof value === "object" && typeof value.toString === "function") {
-			return value.toString();
-		}
-		return String(value);
-	};
-
-	const handleRemoveFromDoctorView = async (report) => {
+	const handleRemoveFromDoctorView = (report) => {
 		const confirmed = window.confirm("Remove this report from doctor medical reports list?");
 		if (!confirmed) {
 			return;
 		}
 
-		const reportIdentity = report.id || report._id;
-		if (!reportIdentity) {
-			setActionMessage("Unable to remove report: missing report id.");
-			return;
-		}
-
-		try {
-			await deleteDoctorMedicalReport(reportIdentity);
-			await loadReports();
-			setActionMessage(`Removed report ${report.reportId || ""} from doctor list.`.trim());
-			return;
-		} catch (error) {
-			if (!shouldUseDoctorReportFallback(error)) {
-				setErrorMessage(error?.response?.data?.message || "Failed to remove report from server.");
-				return;
-			}
-
-			// Fallback only when server route is unavailable/unreachable.
-			deleteMedicalReportByIdentity({ id: reportIdentity, reportId: report.reportId });
-			setReports((prev) =>
-				prev.filter(
-					(item) =>
-						normalizeId(item.id || item._id) !== normalizeId(reportIdentity)
-						&& String(item.reportId || "") !== String(report.reportId || "")
-				)
-			);
-			setActionMessage(`Removed report ${report.reportId || ""} locally (server unavailable).`.trim());
-		}
+		deleteMedicalReportByIdentity({ id: report.id || report._id, reportId: report.reportId });
+		setReports((prev) =>
+			prev.filter(
+				(item) =>
+					(item.id || item._id) !== (report.id || report._id) && String(item.reportId || "") !== String(report.reportId || "")
+			)
+		);
+		setActionMessage(`Removed report ${report.reportId || ""} from this device.`.trim());
 	};
 
 	useEffect(() => {

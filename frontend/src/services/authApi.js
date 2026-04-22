@@ -141,11 +141,6 @@ export const fetchDoctorMedicalReports = async () => {
 	}
 };
 
-export const deleteDoctorMedicalReport = async (reportId) => {
-	const response = await api.delete(`/reports/doctor/${reportId}`);
-	return response.data;
-};
-
 export const deleteMedicalReport = async (reportId) => {
 	try {
 		const response = await api.delete(`/reports/${reportId}`);

@@ -13,7 +13,6 @@ const {
 	getMyMedicalReports,
 	getAssignedMedicalReports,
 	deleteMyMedicalReport,
-	deleteAssignedMedicalReport,
 } = require("../controllers/medicalReportController");
 const { requireAuth, verifyAccessToken } = require("../middlewares/authMiddleware");
 
@@ -29,7 +28,6 @@ router.patch("/me", verifyAccessToken, updateCurrentUserProfile);
 router.post("/reports", requireAuth, createMedicalReport);
 router.get("/reports/me", requireAuth, getMyMedicalReports);
 router.get("/reports/doctor", requireAuth, getAssignedMedicalReports);
-router.delete("/reports/doctor/:reportId", requireAuth, deleteAssignedMedicalReport);
 router.delete("/reports/:reportId", requireAuth, deleteMyMedicalReport);
 
 module.exports = router;

@@ -3,7 +3,6 @@ import { getStoredUser } from "../utils/auth";
 import {
 	fetchDoctorAppointments,
 	approveDoctorAppointment,
-	rejectDoctorAppointment,
 	cancelDoctorAppointment,
 } from "../services/appointmentApi";
 import { getDoctorAvailability, updateDoctorAvailability } from "../services/doctorApi";
@@ -164,21 +163,13 @@ function DoctorSchedulePage({ onOpenTelemedicine = () => {} }) {
 			if (!shouldCancel) return;
 		}
 
-		if (decision === "reject") {
-			const shouldReject = window.confirm("Reject this appointment request?");
-			if (!shouldReject) return;
-		}
-
 		try {
 			setIsUpdatingDecision(true);
 			const response = decision === "confirm"
 				? await approveDoctorAppointment(appointmentId)
-				: decision === "reject"
-					? await rejectDoctorAppointment(appointmentId)
-					: await cancelDoctorAppointment(appointmentId);
+				: await cancelDoctorAppointment(appointmentId);
 
-			const nextStatus = response?.appointment?.status
-				|| (decision === "confirm" ? "pending_payment" : decision === "reject" ? "rejected" : "cancelled");
+			const nextStatus = response?.appointment?.status || (decision === "confirm" ? "pending_payment" : "cancelled");
 
 			setAppointments((prev) => prev.map((item) => (
 				getAppointmentId(item) === appointmentId ? { ...item, status: nextStatus } : item
@@ -191,9 +182,7 @@ function DoctorSchedulePage({ onOpenTelemedicine = () => {} }) {
 			alert(
 				decision === "confirm"
 					? "Appointment confirmed. Patient can now proceed with payment."
-					: decision === "reject"
-						? "Appointment rejected."
-						: "Appointment cancelled."
+					: "Appointment cancelled."
 			);
 		} catch (error) {
 			alert(error?.response?.data?.message || `Failed to ${decision} appointment.`);
@@ -296,12 +285,10 @@ function DoctorSchedulePage({ onOpenTelemedicine = () => {} }) {
 			return false;
 		}
 
-		// Keep UI join window consistent with telemedicine-service validation.
 		const now = Date.now();
 		const start = startTime.getTime();
-		const joinOpensAt = start - 15 * 60 * 1000;
-		const joinClosesAt = start + 120 * 60 * 1000;
-		return now >= joinOpensAt && now <= joinClosesAt;
+		const end = start + 60 * 60 * 1000;
+		return now >= start && now <= end;
 	};
 
 	const handleJoinTelemedicine = (appointment) => {
@@ -451,11 +438,11 @@ function DoctorSchedulePage({ onOpenTelemedicine = () => {} }) {
 													</button>
 													<button
 														type="button"
-														onClick={() => handleAppointmentDecision(slot.raw, "reject")}
+														onClick={() => handleAppointmentDecision(slot.raw, "cancel")}
 														disabled={isUpdatingDecision}
 														className="rounded-lg border border-rose-300 bg-white px-2.5 py-1.5 text-[11px] font-semibold text-rose-700 hover:bg-rose-50 disabled:cursor-not-allowed disabled:opacity-60"
 													>
-														Reject
+														Cancel
 													</button>
 												</div>
 											)}
@@ -516,7 +503,7 @@ function DoctorSchedulePage({ onOpenTelemedicine = () => {} }) {
 				<div className="rounded-2xl border border-slate-200 bg-white shadow-sm">
 					<div className="border-b border-slate-200 p-5">
 						<h3 className="font-semibold text-slate-900">Pending Appointment Requests</h3>
-						<p className="mt-1 text-xs text-slate-500">Review and confirm/reject patient appointment requests.</p>
+						<p className="mt-1 text-xs text-slate-500">Review and confirm/cancel patient appointment requests.</p>
 					</div>
 					<div className="divide-y divide-slate-100">
 						{loading ? (
@@ -544,11 +531,11 @@ function DoctorSchedulePage({ onOpenTelemedicine = () => {} }) {
 										</button>
 										<button
 											type="button"
-											onClick={() => handleAppointmentDecision(request, "reject")}
+											onClick={() => handleAppointmentDecision(request, "cancel")}
 											disabled={isUpdatingDecision}
 											className="rounded-lg border border-rose-300 bg-white px-3 py-1.5 text-xs font-semibold text-rose-700 hover:bg-rose-50 disabled:cursor-not-allowed disabled:opacity-60"
 										>
-											{isUpdatingDecision ? "Updating..." : "Reject"}
+											{isUpdatingDecision ? "Updating..." : "Cancel"}
 										</button>
 									</div>
 								</div>
@@ -669,23 +656,13 @@ function DoctorSchedulePage({ onOpenTelemedicine = () => {} }) {
 							</button>
 							{["pending", "pending_payment", "confirmed"].includes(normalizeStatus(selectedAppointment.status)) && (
 								<>
-									{normalizeStatus(selectedAppointment.status) === "pending" ? (
-										<button
-											onClick={() => handleAppointmentDecision(selectedAppointment, "reject")}
-											disabled={isUpdatingDecision}
-											className="rounded-xl border border-rose-300 bg-white px-4 py-2 text-sm font-semibold text-rose-700 transition hover:bg-rose-50 disabled:cursor-not-allowed disabled:opacity-60"
-										>
-											{isUpdatingDecision ? "Updating..." : "Reject Appointment"}
-										</button>
-									) : (
-										<button
-											onClick={() => handleAppointmentDecision(selectedAppointment, "cancel")}
-											disabled={isUpdatingDecision}
-											className="rounded-xl border border-rose-300 bg-white px-4 py-2 text-sm font-semibold text-rose-700 transition hover:bg-rose-50 disabled:cursor-not-allowed disabled:opacity-60"
-										>
-											{isUpdatingDecision ? "Updating..." : "Cancel Appointment"}
-										</button>
-									)}
+									<button
+										onClick={() => handleAppointmentDecision(selectedAppointment, "cancel")}
+										disabled={isUpdatingDecision}
+										className="rounded-xl border border-rose-300 bg-white px-4 py-2 text-sm font-semibold text-rose-700 transition hover:bg-rose-50 disabled:cursor-not-allowed disabled:opacity-60"
+									>
+										{isUpdatingDecision ? "Updating..." : "Cancel Appointment"}
+									</button>
 									{normalizeStatus(selectedAppointment.status) === "pending" && (
 										<button
 											onClick={() => handleAppointmentDecision(selectedAppointment, "confirm")}
@@ -704,7 +681,7 @@ function DoctorSchedulePage({ onOpenTelemedicine = () => {} }) {
 									title={
 										canJoinTelemedicine(selectedAppointment)
 											? "Join telemedicine session"
-											: "Join is available from 15 minutes before until 2 hours after the scheduled time"
+											: "Join is available only within one hour from the scheduled time"
 									}
 									className="rounded-xl bg-blue-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:bg-slate-300"
 								>
