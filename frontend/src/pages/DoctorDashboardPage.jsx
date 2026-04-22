@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import DashboardShell from "../components/DashboardShell";
 import DoctorTelemedicinePage from "./DoctorTelemedicinePage";
 import DoctorSchedulePage from "./DoctorSchedulePage";
@@ -8,12 +8,18 @@ import DoctorMedicalReportsPage from "./DoctorMedicalReportsPage";
 import { getStoredUser } from "../utils/auth";
 import { updateCurrentUserProfile } from "../services/authApi";
 import { DOCTOR_SPECIALIZATIONS } from "../constants/doctorSpecializations";
+import { fetchDoctorAppointments } from "../services/appointmentApi";
 
 function DoctorDashboardPage() {
+	const QUEUE_REFRESH_INTERVAL_MS = 10000;
 	const [activeMenuItem, setActiveMenuItem] = useState("Overview");
 	const [telemedicineRoomId, setTelemedicineRoomId] = useState("");
 	const [user, setUser] = useState(() => getStoredUser() || {});
 	const doctorProfile = user.doctorProfile || {};
+	const doctorId = doctorProfile._id || user.id || user._id || "";
+	const [doctorAppointments, setDoctorAppointments] = useState([]);
+	const [isQueueLoading, setIsQueueLoading] = useState(false);
+	const [queueError, setQueueError] = useState("");
 	const [profileMessage, setProfileMessage] = useState({ type: "idle", text: "" });
 	const [profileForm, setProfileForm] = useState(() => ({
 		name: user.name || "",
@@ -32,11 +38,122 @@ function DoctorDashboardPage() {
 		{ label: "Response Time", value: "08m", meta: "Average" },
 	];
 
-	const consultationQueue = [
-		{ patient: "Shenal M.", topic: "Follow-up", slot: "10:30 AM", status: "Waiting" },
-		{ patient: "Nadeesha K.", topic: "New consultation", slot: "11:15 AM", status: "Ready" },
-		{ patient: "Kasun P.", topic: "Lab review", slot: "12:00 PM", status: "Scheduled" },
-	];
+	const formatQueueSlot = (appointment) => {
+		const dateValue = appointment?.appointmentDateTime
+			|| (appointment?.appointmentDate && appointment?.slotTime
+				? `${appointment.appointmentDate}T${appointment.slotTime}:00`
+				: null);
+
+		if (!dateValue) {
+			return appointment?.slotTime || "Time not set";
+		}
+
+		const parsed = new Date(dateValue);
+		if (Number.isNaN(parsed.getTime())) {
+			return appointment?.slotTime || "Time not set";
+		}
+
+		return parsed.toLocaleString([], {
+			month: "short",
+			day: "2-digit",
+			hour: "2-digit",
+			minute: "2-digit",
+		});
+	};
+
+	const mapAppointmentStatusToQueue = (status) => {
+		if (status === "confirmed") {
+			return { label: "Ready", badgeClass: "bg-emerald-100 text-emerald-700" };
+		}
+
+		if (status === "pending_payment") {
+			return { label: "Awaiting Payment", badgeClass: "bg-amber-100 text-amber-700" };
+		}
+
+		if (status === "pending") {
+			return { label: "Awaiting Approval", badgeClass: "bg-blue-100 text-blue-700" };
+		}
+
+		if (status === "completed") {
+			return { label: "Completed", badgeClass: "bg-slate-200 text-slate-700" };
+		}
+
+		if (status === "cancelled" || status === "rejected" || status === "expired" || status === "payment_failed") {
+			return { label: "Closed", badgeClass: "bg-rose-100 text-rose-700" };
+		}
+
+		return { label: status || "Scheduled", badgeClass: "bg-slate-200 text-slate-700" };
+	};
+
+	const consultationQueue = useMemo(() => {
+		return doctorAppointments
+			.filter((appointment) => ["pending", "pending_payment", "confirmed"].includes(appointment.status))
+			.sort((a, b) => {
+				const aTime = new Date(a.appointmentDateTime || `${a.appointmentDate}T${a.slotTime || "00:00"}:00`).getTime();
+				const bTime = new Date(b.appointmentDateTime || `${b.appointmentDate}T${b.slotTime || "00:00"}:00`).getTime();
+				if (Number.isNaN(aTime) || Number.isNaN(bTime)) {
+					return 0;
+				}
+				return aTime - bTime;
+			})
+			.slice(0, 8)
+			.map((appointment) => {
+				const statusMeta = mapAppointmentStatusToQueue(appointment.status);
+				return {
+					id: appointment.id || appointment._id || appointment.appointmentId,
+					patient: appointment.patientName || "Unknown patient",
+					topic: appointment.reason || "General consultation",
+					slot: formatQueueSlot(appointment),
+					status: statusMeta.label,
+					badgeClass: statusMeta.badgeClass,
+				};
+			});
+	}, [doctorAppointments]);
+
+	useEffect(() => {
+		if (!doctorId) {
+			return;
+		}
+
+		let isMounted = true;
+
+		const loadDoctorAppointments = async ({ silent = false } = {}) => {
+			if (!silent) {
+				setIsQueueLoading(true);
+			}
+
+			try {
+				const data = await fetchDoctorAppointments(doctorId);
+				if (!isMounted) {
+					return;
+				}
+				setDoctorAppointments(data.appointments || data.data || []);
+				setQueueError("");
+			} catch (error) {
+				if (!isMounted) {
+					return;
+				}
+				setQueueError(error?.response?.data?.message || "Failed to load live consultation queue.");
+			} finally {
+				if (isMounted && !silent) {
+					setIsQueueLoading(false);
+				}
+			}
+		};
+
+		loadDoctorAppointments();
+
+		const intervalId = setInterval(() => {
+			if (activeMenuItem === "Overview") {
+				loadDoctorAppointments({ silent: true });
+			}
+		}, QUEUE_REFRESH_INTERVAL_MS);
+
+		return () => {
+			isMounted = false;
+			clearInterval(intervalId);
+		};
+	}, [doctorId, activeMenuItem]);
 
 	const handleManageConsultationQueue = () => {
 		setActiveMenuItem("Consultations");
@@ -371,30 +488,45 @@ function DoctorDashboardPage() {
 						<section className="rounded-2xl border border-slate-200 bg-white p-5">
 							<div className="mb-4 flex items-center justify-between">
 								<h2 className="text-sm font-semibold text-slate-900">Consultation Queue</h2>
-								<button
-									type="button"
-									onClick={handleManageConsultationQueue}
-									className="text-xs font-semibold text-blue-700 hover:text-blue-800"
-								>
-									Manage slots
-								</button>
+								<div className="flex items-center gap-3">
+									<span className="text-[11px] text-slate-500">Auto-refresh: 10s</span>
+									<button
+										type="button"
+										onClick={handleManageConsultationQueue}
+										className="text-xs font-semibold text-blue-700 hover:text-blue-800"
+									>
+										Manage slots
+									</button>
+								</div>
 							</div>
-							<div className="space-y-3">
-								{consultationQueue.map((item) => (
-									<div key={`${item.patient}-${item.slot}`} className="rounded-xl border border-slate-200 bg-slate-50 p-4">
-										<div className="flex items-center justify-between gap-3">
-											<div>
-												<p className="text-sm font-semibold text-slate-900">{item.patient}</p>
-												<p className="text-xs text-slate-500">{item.topic}</p>
+							{isQueueLoading ? (
+								<p className="rounded-xl border border-dashed border-slate-300 bg-slate-50 px-3 py-4 text-sm text-slate-500">
+									Loading live queue...
+								</p>
+							) : queueError ? (
+								<p className="rounded-xl border border-rose-200 bg-rose-50 px-3 py-4 text-sm text-rose-700">{queueError}</p>
+							) : consultationQueue.length === 0 ? (
+								<p className="rounded-xl border border-dashed border-slate-300 bg-slate-50 px-3 py-4 text-sm text-slate-500">
+									No active consultations in queue.
+								</p>
+							) : (
+								<div className="space-y-3">
+									{consultationQueue.map((item) => (
+										<div key={item.id || `${item.patient}-${item.slot}`} className="rounded-xl border border-slate-200 bg-slate-50 p-4">
+											<div className="flex items-center justify-between gap-3">
+												<div>
+													<p className="text-sm font-semibold text-slate-900">{item.patient}</p>
+													<p className="text-xs text-slate-500">{item.topic}</p>
+												</div>
+												<span className={`rounded-lg px-2 py-1 text-[11px] font-semibold ${item.badgeClass}`}>
+													{item.status}
+												</span>
 											</div>
-											<span className="rounded-lg bg-blue-100 px-2 py-1 text-[11px] font-semibold text-blue-700">
-												{item.status}
-											</span>
+											<p className="mt-3 text-xs font-medium text-slate-600">{item.slot}</p>
 										</div>
-										<p className="mt-3 text-xs font-medium text-slate-600">{item.slot}</p>
-									</div>
-								))}
-							</div>
+									))}
+								</div>
+							)}
 						</section>
 
 						<section className="space-y-5">
