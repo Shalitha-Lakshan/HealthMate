@@ -1,3 +1,6 @@
+// Entry point for notification-service backend
+// Loads environment variables, connects to DB, starts WhatsApp client, and starts server
+// Only comments added, no code changes
 require("dotenv").config();
 const app = require("./app");
 const connectDB = require("./config/db");

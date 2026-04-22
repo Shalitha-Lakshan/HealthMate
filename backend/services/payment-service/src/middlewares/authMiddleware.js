@@ -1,5 +1,9 @@
+// Middleware for authentication and role-based authorization
+// Only comments added, no code changes
+// Import JWT for token verification
 const jwt = require("jsonwebtoken");
 
+// Require authentication for protected routes
 const requireAuth = (req, res, next) => {
 	const authHeader = req.headers.authorization;
 
@@ -23,6 +27,7 @@ const requireAuth = (req, res, next) => {
 	}
 };
 
+// Authorize specific user roles
 const authorizeRoles = (...roles) => (req, res, next) => {
 	if (!req.user?.role) {
 		return res.status(403).json({ message: "role not found in token" });
@@ -35,6 +40,7 @@ const authorizeRoles = (...roles) => (req, res, next) => {
 	return next();
 };
 
+// Export middleware functions
 module.exports = {
 	requireAuth,
 	authorizeRoles,

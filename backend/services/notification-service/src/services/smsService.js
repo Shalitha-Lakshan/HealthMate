@@ -1,7 +1,9 @@
+// SMS/WhatsApp sender service using Twilio
 const twilio = require("twilio");
 
 let client;
 
+// Normalize phone number into E.164 format (Sri Lanka friendly)
 const normalizeToE164 = (value) => {
 	if (!value) {
 		return null;
@@ -28,6 +30,7 @@ const normalizeToE164 = (value) => {
 	return null;
 };
 
+// Create and cache Twilio client
 const getTwilioClient = () => {
 	if (client) {
 		return client;
@@ -42,6 +45,7 @@ const getTwilioClient = () => {
 	return client;
 };
 
+// Send SMS through Twilio
 const sendSms = async ({ to, body }) => {
 	const twilioClient = getTwilioClient();
 	const from = process.env.TWILIO_FROM;
@@ -73,6 +77,7 @@ const sendSms = async ({ to, body }) => {
 	};
 };
 
+// Send WhatsApp message through Twilio WhatsApp API
 const sendWhatsApp = async ({ to, body }) => {
 	const twilioClient = getTwilioClient();
 	const from = process.env.TWILIO_WHATSAPP_FROM;

@@ -1,7 +1,9 @@
+// Creates/reuses a separate MongoDB connection for payment database
 const mongoose = require("mongoose");
 
 let paymentConnection;
 
+// Resolve payment DB URI from env vars (with fallback names)
 const resolvePaymentMongoUri = () => {
 	if (process.env.PAYMENT_MONGO_URI) {
 		return process.env.PAYMENT_MONGO_URI;
@@ -18,6 +20,7 @@ const resolvePaymentMongoUri = () => {
 	return process.env.MONGO_URI;
 };
 
+// Return active payment DB connection (or create one)
 const getPaymentConnection = async () => {
 	if (paymentConnection?.readyState === 1) {
 		return paymentConnection;

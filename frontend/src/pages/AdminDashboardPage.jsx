@@ -1,8 +1,13 @@
+// Admin Dashboard Page
+// Provides admin management for users, appointments, payments, verifications, and audit logs
+// Only comments added, no code changes
+// React and library imports
 import { useEffect, useMemo, useState } from "react";
 import jsPDF from "jspdf";
 import "jspdf/dist/jspdf.umd.min.js";
 import DashboardShell from "../components/DashboardShell";
 import { getStoredUser } from "../utils/auth";
+// API imports for admin, appointment, and payment actions
 import {
 	createAdminUser,
 	deleteAdminUser,
@@ -24,6 +29,7 @@ import {
 	deleteAdminAppointment,
 } from "../services/appointmentApi";
 
+// Utility: Format date/time for display
 const formatDateTime = (value) => {
 	if (!value) {
 		return "N/A";
@@ -43,6 +49,7 @@ const formatDateTime = (value) => {
 	}).format(parsed);
 };
 
+// Utility: Badge color for doctor verification status
 const verificationBadgeClass = (status) => {
 	if (status === "approved") {
 		return "bg-emerald-100 text-emerald-700";
@@ -55,6 +62,7 @@ const verificationBadgeClass = (status) => {
 	return "bg-amber-100 text-amber-700";
 };
 
+// Utility: Badge color for account status
 const accountStatusClass = (status) => {
 	if (status === "active") {
 		return "bg-emerald-100 text-emerald-700";
@@ -67,6 +75,7 @@ const accountStatusClass = (status) => {
 	return "bg-slate-200 text-slate-700";
 };
 
+// Utility: Badge color for payment status
 const paymentStatusClass = (status) => {
 	if (status === "succeeded") {
 		return "bg-emerald-100 text-emerald-700";
@@ -79,6 +88,7 @@ const paymentStatusClass = (status) => {
 	return "bg-amber-100 text-amber-700";
 };
 
+// Utility: Badge color for appointment status
 const appointmentStatusClass = (status) => {
 	if (status === "confirmed") {
 		return "bg-emerald-100 text-emerald-700";
@@ -99,6 +109,7 @@ const appointmentStatusClass = (status) => {
 	return "bg-slate-200 text-slate-700";
 };
 
+// Utility: Format currency amounts
 const formatAmount = (amount, currency = "LKR") =>
 	new Intl.NumberFormat("en-LK", {
 		style: "currency",
@@ -106,13 +117,16 @@ const formatAmount = (amount, currency = "LKR") =>
 		maximumFractionDigits: 2,
 	}).format(Number(amount || 0));
 
+// Utility: Resolve user ID from record
 const resolveUserId = (record) => String(record?.id || record?._id || "");
 
+// Utility: Build PDF file name with timestamp
 const buildPdfFileName = (prefix) => {
 	const timestamp = new Date().toISOString().slice(0, 19).replace(/[T:]/g, "-");
 	return `${prefix}-${timestamp}.pdf`;
 };
 
+// Utility: Create a PDF report for export
 const createPdfReport = (title, subtitle, filters, rows, columns, stats = null) => {
 	const doc = new jsPDF({
 		orientation: "landscape",
@@ -329,11 +343,22 @@ const createPdfReport = (title, subtitle, filters, rows, columns, stats = null) 
 	return doc;
 };
 
+// Utility: Download PDF file
 const triggerPdfDownload = (filename, doc) => {
 	doc.save(filename);
 };
 
+// Main Admin Dashboard Page component
 function AdminDashboardPage() {
+		// State and form initializers
+		// Memoized KPI/statistics cards for dashboard
+		// Memoized filter state for users, payments, appointments
+		// Data loading and filter handlers for users, payments, appointments
+		// CRUD handlers for users and appointments
+		// PDF export handlers for users, payments, appointments
+		// Render helpers for each dashboard section (overview, users, payments, appointments, etc)
+		// Modal renderers for create/edit/delete user and appointment actions
+		// Main render
 	const user = getStoredUser() || {};
 	const initialUserForm = {
 		name: "",
