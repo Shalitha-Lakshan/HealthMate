@@ -77,7 +77,7 @@ kubectl logs deploy/telemedicine-service -n healthmate
 ## 3) Deploy
 
 ```bash
-kubectl apply -k ./k8s/doctor-stack
+kubectl apply -k ./backend/infra/k8s/doctor-stack
 ```
 
 ## 4) Verify

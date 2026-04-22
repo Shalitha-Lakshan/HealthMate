@@ -310,9 +310,9 @@ This section can be copied directly into the individual contribution part of `re
 - Prepared doctor-side interface and workflow documentation bundle:
   - `backend/DOCTOR_REPORT_BUNDLE.md`
 - Added Kubernetes deployment manifests for doctor-related services:
-  - `k8s/doctor-stack/`
+  - `backend/infra/k8s/doctor-stack/`
 - Added deployment guide for doctor stack:
-  - `k8s/doctor-stack/README.md`
+  - `backend/infra/k8s/doctor-stack/README.md`
 
 ## G) Appendix - 3 Minute Doctor Demo Checklist (API + Screenshots)
 

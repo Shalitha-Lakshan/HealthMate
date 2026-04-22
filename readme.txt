@@ -34,9 +34,9 @@ C) Access URLs (default)
 
 D) Optional Kubernetes Deployment (Doctor Stack)
 1. Review and update secret values in:
-   k8s/doctor-stack/*.yaml
+   backend/infra/k8s/doctor-stack/*.yaml
 2. Apply manifests:
-   kubectl apply -k ./k8s/doctor-stack
+   kubectl apply -k ./backend/infra/k8s/doctor-stack
 3. Verify:
    kubectl get pods -n healthmate
    kubectl get svc -n healthmate
@@ -65,7 +65,7 @@ Validation checklist:
 F) Key Documentation Files
 1. backend/DOCTOR_REPORT_BUNDLE.md
 2. backend/DOCTOR_TEST_PROOF.md
-3. k8s/doctor-stack/README.md
+3. backend/infra/k8s/doctor-stack/README.md
 
 Important:
 - Replace placeholder values in submission.txt and members.txt.
