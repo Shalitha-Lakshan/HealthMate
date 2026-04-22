@@ -1,0 +1,72 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: telemedicine-service
+  namespace: healthmate
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: telemedicine-service
+  template:
+    metadata:
+      labels:
+        app: telemedicine-service
+    spec:
+      containers:
+        - name: telemedicine-service
+          image: healthmate/telemedicine-service:latest
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: 5007
+          env:
+            - name: PORT
+              value: "5007"
+            - name: MONGO_URI
+              valueFrom:
+                secretKeyRef:
+                  name: telemedicine-service-secret
+                  key: MONGO_URI
+            - name: JWT_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: telemedicine-service-secret
+                  key: JWT_SECRET
+            - name: AGORA_APP_ID
+              valueFrom:
+                secretKeyRef:
+                  name: telemedicine-service-secret
+                  key: AGORA_APP_ID
+            - name: AGORA_APP_CERTIFICATE
+              valueFrom:
+                secretKeyRef:
+                  name: telemedicine-service-secret
+                  key: AGORA_APP_CERTIFICATE
+            - name: APPOINTMENT_SERVICE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: telemedicine-service-secret
+                  key: APPOINTMENT_SERVICE_URL
+            - name: APPOINTMENT_INTERNAL_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: telemedicine-service-secret
+                  key: APPOINTMENT_INTERNAL_TOKEN
+            - name: TELEMEDICINE_JOIN_BEFORE_MINUTES
+              value: "15"
+            - name: TELEMEDICINE_JOIN_AFTER_MINUTES
+              value: "120"
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: telemedicine-service
+  namespace: healthmate
+spec:
+  selector:
+    app: telemedicine-service
+  ports:
+    - name: http
+      port: 5007
+      targetPort: 5007
+  type: ClusterIP

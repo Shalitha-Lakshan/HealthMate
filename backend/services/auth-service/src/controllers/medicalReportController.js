@@ -156,9 +156,36 @@ const deleteMyMedicalReport = async (req, res) => {
 	}
 };
 
+const deleteAssignedMedicalReport = async (req, res) => {
+	try {
+		if (req.user?.role !== "doctor") {
+			return res.status(403).json({ message: "only doctors can remove assigned medical reports" });
+		}
+
+		const { reportId } = req.params;
+		const deletedReport = await MedicalReport.findOneAndDelete({
+			_id: reportId,
+			doctorId: req.user.sub,
+		});
+
+		if (!deletedReport) {
+			return res.status(404).json({ message: "medical report not found" });
+		}
+
+		return res.status(200).json({ message: "medical report removed from doctor list" });
+	} catch (error) {
+		if (error?.name === "CastError") {
+			return res.status(400).json({ message: "invalid medical report id" });
+		}
+
+		return res.status(500).json({ message: "failed to remove doctor medical report", error: error.message });
+	}
+};
+
 module.exports = {
 	createMedicalReport,
 	getMyMedicalReports,
 	getAssignedMedicalReports,
 	deleteMyMedicalReport,
+	deleteAssignedMedicalReport,
 };

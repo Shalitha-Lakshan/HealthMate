@@ -1,0 +1,20 @@
+Group Members - SE3020 Assignment 1
+
+1. Name: <Member 1 Name>
+   Registration Number: <Member 1 Reg No>
+   ID: <Member 1 ID>
+
+2. Name: <Member 2 Name>
+   Registration Number: <Member 2 Reg No>
+   ID: <Member 2 ID>
+
+3. Name: <Member 3 Name>
+   Registration Number: <Member 3 Reg No>
+   ID: <Member 3 ID>
+
+4. Name: <Member 4 Name> (Optional)
+   Registration Number: <Member 4 Reg No>
+   ID: <Member 4 ID>
+
+Note:
+- Remove the optional 4th member section if your group has only 3 members.

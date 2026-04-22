@@ -1,0 +1,11 @@
+SE3020 - Distributed Systems - Assignment 1 Submission
+
+GitHub Repository Link:
+https://github.com/<your-org-or-username>/<your-repo>
+
+YouTube Demo / Presentation Link:
+https://www.youtube.com/watch?v=<your-video-id>
+
+Notes:
+- Replace placeholders with final links before submission.
+- Ensure repository is accessible to the lecturer/panel.

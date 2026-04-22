@@ -4,8 +4,6 @@ services:
       context: ./backend/services/auth-service
     env_file:
       - ./backend/services/auth-service/.env
-    dns:
-      - 8.8.8.8
     ports:
       - "5001:5001"
     dns:
@@ -75,6 +73,9 @@ services:
       context: ./backend/services/telemedicine-service
     env_file:
       - ./backend/services/telemedicine-service/.env
+    environment:
+      - APPOINTMENT_SERVICE_URL=http://appointment-service:5004/api/appointments
+      - APPOINTMENT_INTERNAL_TOKEN=healthmate-internal-token
     ports:
       - "5007:5007"
     restart: unless-stopped
