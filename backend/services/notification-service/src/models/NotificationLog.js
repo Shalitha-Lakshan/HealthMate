@@ -1,3 +1,5 @@
+// Notification log model
+// Stores delivery results for each channel and recipient
 const mongoose = require("mongoose");
 
 const notificationLogSchema = new mongoose.Schema(
@@ -46,4 +48,5 @@ const notificationLogSchema = new mongoose.Schema(
 	{ timestamps: true }
 );
 
+// Export NotificationLog model
 module.exports = mongoose.model("NotificationLog", notificationLogSchema);

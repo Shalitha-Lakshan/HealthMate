@@ -1,15 +1,21 @@
+// Controller for handling admin-related operations
+// Only comments added, no code changes
+// Import dependencies and models
 const { Types } = require("mongoose");
 const bcrypt = require("bcryptjs");
 const { getAuthUserModel } = require("../models/AuthUser");
 const { getPaymentTransactionModel } = require("../models/PaymentTransaction");
 const AuditLog = require("../models/AuditLog");
 
+// Validation helpers for email, phone, SLMC registration
 const isValidEmail = (email) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
 const isValidPhoneNumber = (phoneNumber) => /^(?:\+94|0)7\d{8}$/.test((phoneNumber || "").replace(/\s+/g, ""));
 const isValidSLMCRegistration = (registrationNumber) => /^[A-Za-z0-9\-/]{4,20}$/.test((registrationNumber || "").trim());
 
+// Patient ID helpers
 const PATIENT_ID_PREFIX = "PAT-";
 
+// Extract sequence number from patient ID
 const extractPatientSequence = (patientId = "") => {
 	if (typeof patientId !== "string" || !patientId.startsWith(PATIENT_ID_PREFIX)) {
 		return 0;
@@ -19,8 +25,10 @@ const extractPatientSequence = (patientId = "") => {
 	return Number.isNaN(numericPart) ? 0 : numericPart;
 };
 
+// Format patient ID from sequence number
 const formatPatientId = (sequenceNumber) => `${PATIENT_ID_PREFIX}${String(sequenceNumber).padStart(4, "0")}`;
 
+// Generate next patient ID
 const generateNextPatientId = async (UserModel) => {
 	const latestPatient = await UserModel.findOne({ patientId: { $regex: `^${PATIENT_ID_PREFIX}` } })
 		.select("patientId")
@@ -31,6 +39,7 @@ const generateNextPatientId = async (UserModel) => {
 	return formatPatientId(nextSequence);
 };
 
+// Normalize doctor verification status
 const normalizeDoctorVerificationStatus = (doctorProfile = {}) => {
 	if (doctorProfile.verificationStatus) {
 		return doctorProfile.verificationStatus;
@@ -39,6 +48,7 @@ const normalizeDoctorVerificationStatus = (doctorProfile = {}) => {
 	return "pending";
 };
 
+// Sanitize user object for output
 const sanitizeUser = (userDoc) => ({
 	id: userDoc._id,
 	patientId: userDoc.patientId,
@@ -79,6 +89,7 @@ const sanitizePaymentTransaction = (transactionDoc) => ({
 	updatedAt: transactionDoc.updatedAt,
 });
 
+// Shared query: doctors who still need verification decision
 const pendingDoctorQuery = {
 	role: "doctor",
 	$or: [
@@ -87,9 +98,11 @@ const pendingDoctorQuery = {
 	],
 };
 
+// Dashboard endpoint: return high-level admin statistics and recent users
 const getOverview = async (_req, res) => {
 	try {
 		const User = await getAuthUserModel();
+		// Count important totals in parallel for better performance
 		const [totalUsers, totalPatients, totalDoctors, totalAdmins, pendingVerifications, activeUsers, suspendedUsers, recentUsers] = await Promise.all([
 			User.countDocuments({}),
 			User.countDocuments({ role: "patient" }),
@@ -126,6 +139,7 @@ const getOverview = async (_req, res) => {
 	}
 };
 
+// Users endpoint: supports filtering, search, and pagination
 const getUsers = async (req, res) => {
 	try {
 		const User = await getAuthUserModel();
@@ -137,6 +151,7 @@ const getUsers = async (req, res) => {
 		const limit = Math.min(Math.max(Number(req.query.limit) || 20, 1), 100);
 		const skip = (page - 1) * limit;
 
+		// Build MongoDB query step-by-step from request filters
 		const query = {};
 		if (roleFilter) {
 			query.role = roleFilter;
@@ -176,6 +191,7 @@ const getUsers = async (req, res) => {
 			}
 		}
 
+		// Fetch page data and total count together
 		const [users, total] = await Promise.all([
 			User.find(query)
 				.select("name email phoneNumber patientId role accountStatus doctorProfile createdAt updatedAt")
@@ -199,6 +215,7 @@ const getUsers = async (req, res) => {
 	}
 };
 
+// Doctor verification queue: list doctors waiting for admin approval/rejection
 const getDoctorVerificationQueue = async (_req, res) => {
 	try {
 		const User = await getAuthUserModel();
@@ -213,6 +230,7 @@ const getDoctorVerificationQueue = async (_req, res) => {
 	}
 };
 
+// Update doctor verification result and align account status accordingly
 const updateDoctorVerificationStatus = async (req, res) => {
 	try {
 		const User = await getAuthUserModel();
@@ -232,6 +250,7 @@ const updateDoctorVerificationStatus = async (req, res) => {
 			return res.status(404).json({ message: "doctor not found" });
 		}
 
+		// Save reviewer decision and metadata
 		doctor.doctorProfile = {
 			...(doctor.doctorProfile || {}),
 			verificationStatus: status,
@@ -253,6 +272,7 @@ const updateDoctorVerificationStatus = async (req, res) => {
 	}
 };
 
+// Update account status for a selected user (except restricted admin transitions)
 const updateUserStatus = async (req, res) => {
 	try {
 		const User = await getAuthUserModel();
@@ -276,6 +296,7 @@ const updateUserStatus = async (req, res) => {
 			return res.status(400).json({ message: "admin users cannot be suspended/deactivated" });
 		}
 
+		// Capture previous state for audit tracking
 		const before = {
 			accountStatus: target.accountStatus || "active",
 		};
@@ -284,6 +305,7 @@ const updateUserStatus = async (req, res) => {
 		target.markModified("accountStatus");
 		await target.save();
 
+		// Record this action in audit logs
 		await AuditLog.create({
 			actorId: req.user?.sub || "unknown",
 			actorName: req.user?.name || "Admin",
@@ -304,6 +326,7 @@ const updateUserStatus = async (req, res) => {
 	}
 };
 
+// Create a new user with validations and role-specific rules
 const createUser = async (req, res) => {
 	try {
 		const User = await getAuthUserModel();
@@ -368,6 +391,7 @@ const createUser = async (req, res) => {
 		const hashedPassword = await bcrypt.hash(password, 10);
 		let createdUser;
 
+		// Patient users receive a generated patient ID (PAT-xxxx)
 		if (targetRole === "patient") {
 			let attempt = 0;
 			while (attempt < 5) {
@@ -396,6 +420,7 @@ const createUser = async (req, res) => {
 				throw new Error("failed to generate unique patient id");
 			}
 		} else {
+			// Doctor/admin users are created with role-specific default statuses
 			createdUser = await User.create({
 				name: name.trim(),
 				email: normalizedEmail,
@@ -415,6 +440,7 @@ const createUser = async (req, res) => {
 			});
 		}
 
+		// Keep a record of who created the user
 		await AuditLog.create({
 			actorId: req.user?.sub || "unknown",
 			actorName: req.user?.name || "Admin",
@@ -434,6 +460,7 @@ const createUser = async (req, res) => {
 	}
 };
 
+// Update existing user profile, role data, and doctor-specific fields
 const updateUser = async (req, res) => {
 	try {
 		const User = await getAuthUserModel();
@@ -506,6 +533,7 @@ const updateUser = async (req, res) => {
 			return res.status(409).json({ message: "phone number already in use" });
 		}
 
+		// Keep a snapshot before editing for audit trail
 		const before = sanitizeUser(target);
 
 		target.name = name.trim();
@@ -513,6 +541,7 @@ const updateUser = async (req, res) => {
 		target.phoneNumber = normalizedPhone;
 		target.role = targetRole;
 
+		// Ensure patient role always has a patient ID
 		if (targetRole === "patient" && !target.patientId) {
 			let attempt = 0;
 			while (attempt < 5) {
@@ -551,6 +580,7 @@ const updateUser = async (req, res) => {
 
 		await target.save();
 
+		// Store full before/after changes
 		await AuditLog.create({
 			actorId: req.user?.sub || "unknown",
 			actorName: req.user?.name || "Admin",
@@ -571,6 +601,7 @@ const updateUser = async (req, res) => {
 	}
 };
 
+// Delete non-admin user and write deletion event to audit log
 const deleteUser = async (req, res) => {
 	try {
 		const User = await getAuthUserModel();
@@ -592,6 +623,7 @@ const deleteUser = async (req, res) => {
 		const before = sanitizeUser(target);
 		await User.deleteOne({ _id: userId });
 
+		// Save deletion metadata for accountability
 		await AuditLog.create({
 			actorId: req.user?.sub || "unknown",
 			actorName: req.user?.name || "Admin",
@@ -608,6 +640,7 @@ const deleteUser = async (req, res) => {
 	}
 };
 
+// Fetch paginated audit logs for admin review
 const getAuditLogs = async (req, res) => {
 	try {
 		const page = Math.max(Number(req.query.page) || 1, 1);
@@ -633,10 +666,12 @@ const getAuditLogs = async (req, res) => {
 	}
 };
 
+// Payment overview endpoint for admin dashboard summary cards
 const getPaymentOverview = async (_req, res) => {
 	try {
 		const PaymentTransaction = await getPaymentTransactionModel();
 
+		// Gather payment KPIs and latest records in one call group
 		const [
 			totalTransactions,
 			succeededTransactions,
@@ -676,6 +711,7 @@ const getPaymentOverview = async (_req, res) => {
 	}
 };
 
+// Payment transactions endpoint with filters, search, and pagination
 const getPaymentTransactions = async (req, res) => {
 	try {
 		const PaymentTransaction = await getPaymentTransactionModel();
@@ -690,6 +726,7 @@ const getPaymentTransactions = async (req, res) => {
 		const limit = Math.min(Math.max(Number(req.query.limit) || 20, 1), 100);
 		const skip = (page - 1) * limit;
 
+		// Build dynamic query from optional filters
 		const query = {};
 
 		if (status) {
@@ -736,6 +773,7 @@ const getPaymentTransactions = async (req, res) => {
 			}
 		}
 
+		// Return current page + total count for frontend pagination
 		const [transactions, total] = await Promise.all([
 			PaymentTransaction.find(query)
 				.select(

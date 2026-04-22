@@ -1,5 +1,8 @@
+// Middleware for service-to-service authentication
+// Validates x-internal-token header
 const NOTIFICATION_INTERNAL_TOKEN = process.env.NOTIFICATION_INTERNAL_TOKEN || "healthmate-internal-token";
 
+// Allow request only when internal token is valid
 const requireInternalToken = (req, res, next) => {
 	const token = req.headers["x-internal-token"];
 
@@ -10,6 +13,7 @@ const requireInternalToken = (req, res, next) => {
 	return next();
 };
 
+// Export middleware
 module.exports = {
 	requireInternalToken,
 };

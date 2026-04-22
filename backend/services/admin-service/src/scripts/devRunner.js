@@ -1,9 +1,12 @@
+// Dev helper script
+// Frees service port and starts nodemon for local development
 require("dotenv").config();
 const { spawn } = require("child_process");
 const killPort = require("kill-port");
 
 const port = Number(process.env.PORT || 5009);
 
+// Kill existing process on the port, then run nodemon
 const run = async () => {
 	try {
 		await killPort(port, "tcp");

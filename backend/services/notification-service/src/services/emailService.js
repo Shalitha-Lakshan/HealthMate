@@ -1,7 +1,9 @@
+// Email service helper using Nodemailer
 const nodemailer = require("nodemailer");
 
 let transporter;
 
+// Create and cache SMTP transporter
 const getTransporter = () => {
 	if (transporter) {
 		return transporter;
@@ -26,6 +28,7 @@ const getTransporter = () => {
 	return transporter;
 };
 
+// Send email notification (or return skipped when SMTP is not configured)
 const sendEmail = async ({ to, subject, text, html }) => {
 	const mailTransporter = getTransporter();
 

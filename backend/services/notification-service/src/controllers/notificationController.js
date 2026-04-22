@@ -1,11 +1,17 @@
+// Controller for handling notifications (email, SMS, WhatsApp)
+// Only comments added, no code changes
+// Import models and services for notifications
 const NotificationLog = require("../models/NotificationLog");
 const { sendEmail } = require("../services/emailService");
 const { sendSms } = require("../services/smsService");
 const { sendWhatsApp, getWhatsAppStatus, getWhatsAppQrDataUrl } = require("../services/whatsappService");
 
+// Maximum retry attempts for sending notifications
 const MAX_RETRY_ATTEMPTS = Math.max(0, Number(process.env.NOTIFICATION_RETRY_ATTEMPTS || 2));
+// Timers for appointment reminders
 const reminderTimers = new Map();
 
+// Parse opt-in values for notification channels
 const parseOptIn = (value, defaultValue = true) => {
 	if (value === undefined || value === null) {
 		return defaultValue;
@@ -26,6 +32,7 @@ const parseOptIn = (value, defaultValue = true) => {
 	return defaultValue;
 };
 
+// Get Date object from appointment date and slot time
 const getDateTimeValue = (appointmentDate, slotTime) => {
 	if (!appointmentDate || !slotTime) {
 		return null;
@@ -35,6 +42,7 @@ const getDateTimeValue = (appointmentDate, slotTime) => {
 	return Number.isNaN(parsed.getTime()) ? null : parsed;
 };
 
+// Format date and time for notifications
 const formatDateTime = (appointmentDate, slotTime) => {
 	if (!appointmentDate) {
 		return "To be scheduled";
@@ -54,6 +62,7 @@ const formatDateTime = (appointmentDate, slotTime) => {
 	}).format(parsed);
 };
 
+// Build HTML content for notification emails
 const buildEmailHtml = ({ recipientName, heading, intro, appointmentId, dateTime, patientName, doctorName }) => `
 <div style="font-family: Arial, Helvetica, sans-serif; background:#f8fafc; padding:24px; color:#0f172a;">
 	<div style="max-width:640px; margin:0 auto; background:#ffffff; border:1px solid #e2e8f0; border-radius:12px; overflow:hidden;">
@@ -184,6 +193,7 @@ const buildNotificationMessage = ({ eventType, appointmentId, patientName, docto
 	};
 };
 
+// Save one notification delivery result (sent/failed/skipped) to DB
 const persistLog = async ({
 	eventType,
 	channel,
@@ -208,8 +218,10 @@ const persistLog = async ({
 	});
 };
 
+// Send one channel message with retry logic and status logging
 const processChannel = async ({ eventType, channel, recipientRole, recipient, appointmentId, message, sender }) => {
 	if (!recipient) {
+		// No destination, so skip safely and log reason
 		await persistLog({
 			eventType,
 			channel,
@@ -228,6 +240,7 @@ const processChannel = async ({ eventType, channel, recipientRole, recipient, ap
 			const providerResponse = await sender();
 
 			if (providerResponse.skipped) {
+				// Provider reported skip (for example: service disabled)
 				await persistLog({
 					eventType,
 					channel,
@@ -242,6 +255,7 @@ const processChannel = async ({ eventType, channel, recipientRole, recipient, ap
 				return { status: "skipped", reason: providerResponse.message, attempts: attempt + 1 };
 			}
 
+			// Delivery succeeded
 			await persistLog({
 				eventType,
 				channel,
@@ -256,9 +270,11 @@ const processChannel = async ({ eventType, channel, recipientRole, recipient, ap
 			return { status: "sent", attempts: attempt + 1 };
 		} catch (error) {
 			if (attempt < MAX_RETRY_ATTEMPTS) {
+				// Retry until max attempts reached
 				continue;
 			}
 
+		// Final failure after all retries
 		await persistLog({
 			eventType,
 			channel,
@@ -277,6 +293,7 @@ const processChannel = async ({ eventType, channel, recipientRole, recipient, ap
 	return { status: "failed", reason: "unknown error", attempts: MAX_RETRY_ATTEMPTS + 1 };
 };
 
+// Remove scheduled reminders for a specific appointment
 const clearReminderTimers = (appointmentId) => {
 	if (!appointmentId) {
 		return;
@@ -292,6 +309,7 @@ const clearReminderTimers = (appointmentId) => {
 	}
 };
 
+// Create one reminder timer (24h/1h before appointment)
 const scheduleReminderNotification = ({ triggerAt, payload, reminderEventType }) => {
 	if (!(triggerAt instanceof Date) || Number.isNaN(triggerAt.getTime())) {
 		return;
@@ -321,6 +339,7 @@ const scheduleReminderNotification = ({ triggerAt, payload, reminderEventType })
 	reminderTimers.set(key, timerId);
 };
 
+// Create both reminder timers when appointment is confirmed
 const scheduleReminderTimers = (payload) => {
 	const appointmentDateTime = getDateTimeValue(payload.appointmentDate, payload.slotTime);
 	if (!appointmentDateTime) {
@@ -342,6 +361,7 @@ const scheduleReminderTimers = (payload) => {
 	});
 };
 
+// Main internal workflow: validate event, build content, send through all channels
 const dispatchAppointmentNotification = async (payload, options = { scheduleReminders: true }) => {
 	const {
 		eventType,
@@ -358,6 +378,7 @@ const dispatchAppointmentNotification = async (payload, options = { scheduleRemi
 		doctorWhatsAppOptIn,
 	} = payload;
 
+	// Basic required data check
 	if (!eventType || !appointmentId || !patientName || !doctorName) {
 		return {
 			success: false,
@@ -366,6 +387,7 @@ const dispatchAppointmentNotification = async (payload, options = { scheduleRemi
 		};
 	}
 
+	// Allow only known event types
 	if (
 		![
 			"APPOINTMENT_CONFIRMED",
@@ -384,10 +406,12 @@ const dispatchAppointmentNotification = async (payload, options = { scheduleRemi
 		};
 	}
 
+	// Cancel reminder timers if appointment is cancelled/deleted
 	if (["APPOINTMENT_CANCELLED", "APPOINTMENT_DELETED"].includes(eventType)) {
 		clearReminderTimers(appointmentId);
 	}
 
+	// Schedule reminder notifications after successful confirmation
 	if (eventType === "APPOINTMENT_CONFIRMED" && options.scheduleReminders !== false) {
 		scheduleReminderTimers({
 			eventType,
@@ -417,6 +441,7 @@ const dispatchAppointmentNotification = async (payload, options = { scheduleRemi
 	const patientOptIn = parseOptIn(patientWhatsAppOptIn, true);
 	const doctorOptIn = parseOptIn(doctorWhatsAppOptIn, true);
 
+	// Send patient notifications: email, sms, then whatsapp
 	await processChannel({
 		eventType,
 		channel: "email",
@@ -461,6 +486,7 @@ const dispatchAppointmentNotification = async (payload, options = { scheduleRemi
 		sender: () => sendWhatsApp({ to: patientPhone, body: message.whatsappBody }),
 	});
 
+	// Fallback email if WhatsApp did not deliver to patient
 	if (patientWhatsAppResult.status !== "sent" && patientEmail) {
 		await processChannel({
 			eventType,
@@ -478,6 +504,7 @@ const dispatchAppointmentNotification = async (payload, options = { scheduleRemi
 		});
 	}
 
+	// Send doctor notifications: email, sms, then whatsapp
 	await processChannel({
 		eventType,
 		channel: "email",
@@ -522,6 +549,7 @@ const dispatchAppointmentNotification = async (payload, options = { scheduleRemi
 		sender: () => sendWhatsApp({ to: doctorPhone, body: message.whatsappBody }),
 	});
 
+	// Fallback email if WhatsApp did not deliver to doctor
 	if (doctorWhatsAppResult.status !== "sent" && doctorEmail) {
 		await processChannel({
 			eventType,
@@ -542,6 +570,7 @@ const dispatchAppointmentNotification = async (payload, options = { scheduleRemi
 	return { success: true, statusCode: 200, message: "notifications processed" };
 };
 
+// HTTP controller: receives appointment event from internal service and runs workflow
 const notifyAppointmentEvent = async (req, res) => {
 	try {
 		const result = await dispatchAppointmentNotification(req.body);
@@ -551,10 +580,12 @@ const notifyAppointmentEvent = async (req, res) => {
 	}
 };
 
+// Return WhatsApp client readiness status (connected/disabled/etc.)
 const getWhatsAppConnectionStatus = (_req, res) => {
 	return res.status(200).json(getWhatsAppStatus());
 };
 
+// Return WhatsApp QR image so client can be paired when not connected
 const getWhatsAppQr = async (_req, res) => {
 	const status = getWhatsAppStatus();
 	if (!status.enabled) {

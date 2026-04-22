@@ -1,6 +1,12 @@
+// Controller for handling payment-related operations using Stripe
+// Author: HealthMate Team
+// Only comments added, no code changes
+// Import PaymentTransaction model for DB operations
 const PaymentTransaction = require("../models/PaymentTransaction");
+// Import Stripe library for payment processing
 const Stripe = require("stripe");
 
+// URLs and keys from environment variables
 const APPOINTMENT_SERVICE_URL =
 	process.env.APPOINTMENT_SERVICE_URL || "http://localhost:5004/api/appointments";
 const APPOINTMENT_INTERNAL_TOKEN = process.env.APPOINTMENT_INTERNAL_TOKEN || "healthmate-internal-token";
@@ -8,10 +14,13 @@ const STRIPE_SECRET_KEY = process.env.STRIPE_SECRET_KEY;
 const PAYMENT_SUCCESS_URL = process.env.PAYMENT_SUCCESS_URL || "http://localhost:5173/dashboard/patient?payment=success";
 const PAYMENT_CANCEL_URL = process.env.PAYMENT_CANCEL_URL || "http://localhost:5173/dashboard/patient?payment=cancel";
 
+// Initialize Stripe instance if key is present
 const stripe = STRIPE_SECRET_KEY ? new Stripe(STRIPE_SECRET_KEY) : null;
 
+// Convert amount to smallest currency unit (e.g., cents)
 const toSmallestCurrencyUnit = (amount) => Math.round(Number(amount) * 100);
 
+// Notify appointment service that payment is confirmed
 const confirmAppointmentInternally = async ({ appointmentId, patientId, paymentMethod, paymentReference }) => {
 	const response = await fetch(`${APPOINTMENT_SERVICE_URL}/internal/payment-confirmation`, {
 		method: "POST",
@@ -32,6 +41,7 @@ const confirmAppointmentInternally = async ({ appointmentId, patientId, paymentM
 	return { response, appointmentResponse };
 };
 
+// Check if appointment is eligible for payment
 const validatePaymentEligibilityInternally = async ({ appointmentId, patientId }) => {
 	const response = await fetch(
 		`${APPOINTMENT_SERVICE_URL}/internal/${appointmentId}/payment-eligibility?patientId=${encodeURIComponent(String(patientId))}`,
@@ -48,7 +58,13 @@ const validatePaymentEligibilityInternally = async ({ appointmentId, patientId }
 	return { response, eligibilityResponse };
 };
 
+// Initiate a payment (Stripe checkout session)
 const initiatePayment = async (req, res) => {
+	// Step 1: validate input and provider
+	// Step 2: verify appointment can be paid by this patient
+	// Step 3: create a pending transaction in DB
+	// Step 4: create Stripe Checkout session
+	// Step 5: save gateway session data and return checkout URL
 	try {
 		const {
 			appointmentId,
@@ -71,6 +87,7 @@ const initiatePayment = async (req, res) => {
 			return res.status(500).json({ message: "STRIPE_SECRET_KEY is missing in environment variables" });
 		}
 
+		// Ask appointment service for official payable amount/currency
 		const { response, eligibilityResponse } = await validatePaymentEligibilityInternally({
 			appointmentId,
 			patientId: req.user.sub,
@@ -96,6 +113,7 @@ const initiatePayment = async (req, res) => {
 			return res.status(400).json({ message: "currency mismatch for selected appointment" });
 		}
 
+		// Store pending transaction before redirecting to Stripe
 		const paymentTransaction = await PaymentTransaction.create({
 			appointmentId,
 			patientId: req.user.sub,
@@ -105,6 +123,7 @@ const initiatePayment = async (req, res) => {
 			status: "pending",
 		});
 
+		// Create Stripe hosted checkout page
 		const checkoutSession = await stripe.checkout.sessions.create({
 			mode: "payment",
 			payment_method_types: ["card"],
@@ -129,6 +148,7 @@ const initiatePayment = async (req, res) => {
 			},
 		});
 
+		// Save Stripe session details for completion step
 		paymentTransaction.gatewayPayload = {
 			stripeSessionId: checkoutSession.id,
 			stripeSessionStatus: checkoutSession.status,
@@ -145,7 +165,13 @@ const initiatePayment = async (req, res) => {
 	}
 };
 
+// Complete a payment after Stripe checkout
 const completePayment = async (req, res) => {
+	// Step 1: load transaction and ownership checks
+	// Step 2: verify transaction still pending
+	// Step 3: verify Stripe session is paid
+	// Step 4: confirm appointment in appointment service
+	// Step 5: mark transaction success/failure
 	try {
 		const { transactionId } = req.params;
 		const { paymentMethod = "stripe-card", gatewaySessionId } = req.body;
@@ -183,6 +209,7 @@ const completePayment = async (req, res) => {
 			return res.status(400).json({ message: "gatewaySessionId is required" });
 		}
 
+		// Pull final payment status from Stripe
 		const checkoutSession = await stripe.checkout.sessions.retrieve(stripeSessionId);
 		if (checkoutSession.payment_status !== "paid") {
 			return res.status(400).json({ message: "payment not completed on stripe checkout" });
@@ -190,6 +217,7 @@ const completePayment = async (req, res) => {
 
 		const paymentReference = checkoutSession.payment_intent || checkoutSession.id;
 
+		// If money is paid, finalize appointment state in appointment service
 		const { response, appointmentResponse } = await confirmAppointmentInternally({
 			appointmentId: transaction.appointmentId,
 			patientId: req.user.sub,
@@ -198,6 +226,7 @@ const completePayment = async (req, res) => {
 		});
 
 		if (!response.ok) {
+			// Payment is paid in gateway, but appointment confirmation failed internally
 			transaction.status = "failed";
 			transaction.errorMessage = appointmentResponse.message || "appointment confirmation failed";
 			transaction.paymentMethod = paymentMethod;
@@ -215,6 +244,7 @@ const completePayment = async (req, res) => {
 				.json({ message: appointmentResponse.message || "payment failed", transaction });
 		}
 
+		// Full success path: payment + appointment confirmation
 		transaction.status = "succeeded";
 		transaction.paymentMethod = paymentMethod;
 		transaction.paymentReference = paymentReference;
@@ -237,6 +267,7 @@ const completePayment = async (req, res) => {
 	}
 };
 
+// Get payment transaction by transactionId (patient only)
 const getPaymentByTransactionId = async (req, res) => {
 	try {
 		const { transactionId } = req.params;
@@ -256,6 +287,7 @@ const getPaymentByTransactionId = async (req, res) => {
 	}
 };
 
+// Export controller functions
 module.exports = {
 	initiatePayment,
 	completePayment,

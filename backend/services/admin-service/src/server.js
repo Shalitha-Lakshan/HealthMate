@@ -1,3 +1,6 @@
+// Entry point for admin-service backend
+// Loads environment variables, connects to DB, and starts server
+// Only comments added, no code changes
 require("dotenv").config();
 const app = require("./app");
 const connectDB = require("./config/db");

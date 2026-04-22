@@ -1,3 +1,5 @@
+// Audit log model
+// Stores who did what action and before/after snapshots
 const mongoose = require("mongoose");
 
 const auditLogSchema = new mongoose.Schema(
@@ -34,4 +36,5 @@ const auditLogSchema = new mongoose.Schema(
 	{ timestamps: true }
 );
 
+// Export AuditLog model
 module.exports = mongoose.model("AuditLog", auditLogSchema);

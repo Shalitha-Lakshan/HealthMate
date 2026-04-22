@@ -1,3 +1,5 @@
+// WhatsApp Web client service
+// Handles client initialization, QR flow, status checks, and message send
 const fs = require("fs");
 const path = require("path");
 const qrcodeTerminal = require("qrcode-terminal");
@@ -10,8 +12,10 @@ let ready = false;
 let lastError = null;
 let latestQrText = null;
 
+// Feature flag for WhatsApp notifications
 const isWhatsAppEnabled = () => String(process.env.WHATSAPP_ENABLED || "false").toLowerCase() === "true";
 
+// Normalize phone number into E.164 format (Sri Lanka friendly)
 const normalizeToE164 = (value) => {
 	if (!value) {
 		return null;
@@ -38,6 +42,7 @@ const normalizeToE164 = (value) => {
 	return null;
 };
 
+// Find Chromium/Chrome executable for whatsapp-web.js
 const resolveChromiumPath = () => {
 	if (process.env.CHROMIUM_PATH) {
 		return process.env.CHROMIUM_PATH;
@@ -47,6 +52,7 @@ const resolveChromiumPath = () => {
 	return candidates.find((candidate) => fs.existsSync(candidate));
 };
 
+// Remove leftover Chromium lock files from previous crashes
 const clearStaleChromiumLocks = (authPath) => {
 	try {
 		if (!fs.existsSync(authPath)) {
@@ -79,6 +85,7 @@ const clearStaleChromiumLocks = (authPath) => {
 	}
 };
 
+// Initialize WhatsApp client once and register event handlers
 const initWhatsAppClient = () => {
 	if (!isWhatsAppEnabled() || initialized) {
 		return;
@@ -140,6 +147,7 @@ const initWhatsAppClient = () => {
 	});
 };
 
+// Send WhatsApp message through active WhatsApp Web session
 const sendWhatsApp = async ({ to, body }) => {
 	if (!isWhatsAppEnabled()) {
 		return {
@@ -172,6 +180,7 @@ const sendWhatsApp = async ({ to, body }) => {
 	};
 };
 
+// Return current WhatsApp client status for diagnostics
 const getWhatsAppStatus = () => {
 	if (!isWhatsAppEnabled()) {
 		return {
@@ -199,6 +208,7 @@ const getWhatsAppStatus = () => {
 	};
 };
 
+// Convert latest QR text to image data URL for frontend display
 const getWhatsAppQrDataUrl = async () => {
 	if (!latestQrText) {
 		return null;
