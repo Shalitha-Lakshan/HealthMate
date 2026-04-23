@@ -1,17 +1,23 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { getStoredUser } from "../utils/auth";
 import AgoraVideoCall from "../telemedicine/AgoraVideoCall";
 
 const TELEMEDICINE_BASE_URL = import.meta.env.VITE_TELEMEDICINE_BASE_URL || "http://localhost:5007";
 
-function PatientTelemedicinePage() {
+function PatientTelemedicinePage({ initialRoomId = "" }) {
 	const user = useMemo(() => getStoredUser() || {}, []);
 	const displayName = useMemo(() => user?.name || user?.email || "Patient", [user]);
 
-	const [roomId, setRoomId] = useState("");
+	const [roomId, setRoomId] = useState(() => initialRoomId || "");
 	const [agoraSession, setAgoraSession] = useState(null);
 	const [isLoading, setIsLoading] = useState(false);
 	const [error, setError] = useState("");
+
+	useEffect(() => {
+		if (initialRoomId) {
+			setRoomId(initialRoomId);
+		}
+	}, [initialRoomId]);
 
 	const joinSession = async () => {
 		setIsLoading(true);

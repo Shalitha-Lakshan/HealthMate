@@ -4,11 +4,12 @@ import AgoraVideoCall from "../telemedicine/AgoraVideoCall";
 
 const TELEMEDICINE_BASE_URL = import.meta.env.VITE_TELEMEDICINE_BASE_URL || "http://localhost:5007";
 
-function DoctorTelemedicinePage() {
+
+function DoctorTelemedicinePage({ initialRoomId = "" }) {
 	const user = useMemo(() => getStoredUser() || {}, []);
 	const displayName = useMemo(() => user?.name || user?.email || "Doctor", [user]);
 
-	const [roomId, setRoomId] = useState(crypto?.randomUUID?.() || `room-${Date.now()}`);
+	const [roomId, setRoomId] = useState(() => initialRoomId || (crypto?.randomUUID?.() || `room-${Date.now()}`));
 	const [agoraSession, setAgoraSession] = useState(null);
 	const [isLoading, setIsLoading] = useState(false);
 	const [error, setError] = useState("");
@@ -17,6 +18,12 @@ function DoctorTelemedicinePage() {
 		setAgoraSession(null);
 		setError("");
 	}, []);
+
+	useEffect(() => {
+		if (initialRoomId) {
+			setRoomId(initialRoomId);
+		}
+	}, [initialRoomId]);
 
 	const createSession = async () => {
 		setIsLoading(true);

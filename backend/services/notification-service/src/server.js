@@ -1,6 +1,10 @@
+// Entry point for notification-service backend
+// Loads environment variables, connects to DB, starts WhatsApp client, and starts server
+// Only comments added, no code changes
 require("dotenv").config();
 const app = require("./app");
 const connectDB = require("./config/db");
+const { initWhatsAppClient } = require("./services/whatsappService");
 
 const PORT = process.env.PORT || 5006;
 const MONGO_URI = process.env.MONGO_URI;
@@ -12,6 +16,7 @@ if (!MONGO_URI) {
 
 connectDB(MONGO_URI)
 	.then(() => {
+		initWhatsAppClient();
 		app.listen(PORT, () => {
 			console.log(`notification-service running on port ${PORT}`);
 		});

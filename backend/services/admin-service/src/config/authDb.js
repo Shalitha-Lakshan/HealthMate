@@ -1,7 +1,9 @@
+// Creates/reuses a separate MongoDB connection for auth database
 const mongoose = require("mongoose");
 
 let authConnection;
 
+// Resolve auth DB URI from env vars (with fallback names)
 const resolveAuthMongoUri = () => {
 	if (process.env.AUTH_MONGO_URI) {
 		return process.env.AUTH_MONGO_URI;
@@ -18,6 +20,7 @@ const resolveAuthMongoUri = () => {
 	return process.env.MONGO_URI;
 };
 
+// Return active auth DB connection (or create one)
 const getAuthConnection = async () => {
 	if (authConnection?.readyState === 1) {
 		return authConnection;

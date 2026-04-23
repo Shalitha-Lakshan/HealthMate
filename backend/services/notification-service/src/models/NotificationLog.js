@@ -1,3 +1,5 @@
+// Notification log model
+// Stores delivery results for each channel and recipient
 const mongoose = require("mongoose");
 
 const notificationLogSchema = new mongoose.Schema(
@@ -9,7 +11,7 @@ const notificationLogSchema = new mongoose.Schema(
 		},
 		channel: {
 			type: String,
-			enum: ["email", "sms"],
+			enum: ["email", "sms", "whatsapp"],
 			required: true,
 		},
 		recipientRole: {
@@ -46,4 +48,5 @@ const notificationLogSchema = new mongoose.Schema(
 	{ timestamps: true }
 );
 
+// Export NotificationLog model
 module.exports = mongoose.model("NotificationLog", notificationLogSchema);

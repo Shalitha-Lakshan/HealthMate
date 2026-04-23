@@ -36,11 +36,15 @@ const appointmentSchema = new mongoose.Schema(
 			required: true,
 			trim: true,
 		},
+		patientWhatsAppOptIn: {
+			type: Boolean,
+			default: true,
+		},
 		patientAge: {
 			type: Number,
 			required: true,
-			min: 0,
-			max: 120,
+			min: 1,
+			max: 150,
 		},
 		doctorId: {
 			type: String,
@@ -62,6 +66,10 @@ const appointmentSchema = new mongoose.Schema(
 			type: String,
 			required: true,
 			trim: true,
+		},
+		doctorWhatsAppOptIn: {
+			type: Boolean,
+			default: true,
 		},
 		specialty: {
 			type: String,
@@ -89,7 +97,7 @@ const appointmentSchema = new mongoose.Schema(
 		},
 		reason: {
 			type: String,
-			required: true,
+			default: "",
 			trim: true,
 			maxlength: 500,
 		},
@@ -105,7 +113,7 @@ const appointmentSchema = new mongoose.Schema(
 				"payment_failed",
 				"expired",
 			],
-			default: "pending_payment",
+			default: "pending",
 		},
 		paymentStatus: {
 			type: String,

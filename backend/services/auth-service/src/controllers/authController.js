@@ -21,13 +21,84 @@ const isValidSLMCRegistration = (registrationNumber) => {
 	return slmcRegex.test(normalized);
 };
 
+const isValidProfilePhotoDataUrl = (photo = "") => {
+	const regex = /^data:image\/(png|jpe?g|webp);base64,[a-zA-Z0-9+/=\r\n]+$/;
+	return regex.test(photo);
+};
+
+const getDataUrlByteSize = (photo = "") => {
+	const base64Part = photo.split(",")[1] || "";
+	return Buffer.from(base64Part, "base64").length;
+};
+
+const PATIENT_ID_PREFIX = "PAT-";
+
+const extractPatientSequence = (patientId = "") => {
+	if (typeof patientId !== "string" || !patientId.startsWith(PATIENT_ID_PREFIX)) {
+		return 0;
+	}
+
+	const numericPart = Number.parseInt(patientId.slice(PATIENT_ID_PREFIX.length), 10);
+	return Number.isNaN(numericPart) ? 0 : numericPart;
+};
+
+const formatPatientId = (sequenceNumber) => `${PATIENT_ID_PREFIX}${String(sequenceNumber).padStart(4, "0")}`;
+
+const generateNextPatientId = async () => {
+	const latestPatient = await User.findOne({ patientId: { $regex: `^${PATIENT_ID_PREFIX}` } })
+		.select("patientId")
+		.sort({ patientId: -1 })
+		.lean();
+
+	const nextSequence = extractPatientSequence(latestPatient?.patientId) + 1;
+	return formatPatientId(nextSequence);
+};
+
+const assignPatientIdIfMissing = async (userDoc) => {
+	if (!userDoc || userDoc.role !== "patient" || userDoc.patientId) {
+		return userDoc;
+	}
+
+	let attempt = 0;
+	while (attempt < 5) {
+		attempt += 1;
+		const candidatePatientId = await generateNextPatientId();
+
+		try {
+			userDoc.patientId = candidatePatientId;
+			await userDoc.save();
+			return userDoc;
+		} catch (saveError) {
+			if (saveError?.code !== 11000 || !saveError?.message?.includes("patientId")) {
+				throw saveError;
+			}
+		}
+	}
+
+	throw new Error("failed to assign unique patient id");
+};
+
 const sanitizeUser = (userDoc) => ({
 	id: userDoc._id,
+	patientId: userDoc.patientId,
 	name: userDoc.name,
 	email: userDoc.email,
 	phoneNumber: userDoc.phoneNumber,
 	role: userDoc.role,
+	profilePhoto: userDoc.profilePhoto || "",
 	accountStatus: userDoc.accountStatus || "active",
+	patientProfile:
+		userDoc.role === "patient"
+			? {
+				photoData: userDoc.patientProfile?.photoData || "",
+				dateOfBirth: userDoc.patientProfile?.dateOfBirth || null,
+				gender: userDoc.patientProfile?.gender || "",
+				bloodGroup: userDoc.patientProfile?.bloodGroup || "",
+				address: userDoc.patientProfile?.address || "",
+				emergencyContactName: userDoc.patientProfile?.emergencyContactName || "",
+				emergencyContactPhone: userDoc.patientProfile?.emergencyContactPhone || "",
+			}
+			: undefined,
 	doctorProfile:
 		userDoc.role === "doctor"
 			? {
@@ -102,23 +173,51 @@ const register = async (req, res) => {
 
 		const hashedPassword = await bcrypt.hash(password, 10);
 		const targetRole = role || "patient";
-		const user = await User.create({
-			name: name.trim(),
-			email: email.toLowerCase().trim(),
-			phoneNumber: phoneNumber.trim(),
-			password: hashedPassword,
-			role: targetRole,
-			accountStatus: targetRole === "doctor" ? "pending" : "active",
-			doctorProfile:
-				targetRole === "doctor"
-					? {
-						specialization: doctorProfile.specialization.trim(),
-						slmcRegistrationNumber: doctorProfile.slmcRegistrationNumber.trim(),
-						yearsOfExperience: Number(doctorProfile.yearsOfExperience),
-						verificationStatus: "pending",
+
+		let user;
+		if (targetRole === "patient") {
+			let attempt = 0;
+			while (attempt < 5) {
+				attempt += 1;
+				const candidatePatientId = await generateNextPatientId();
+
+				try {
+					user = await User.create({
+						name: name.trim(),
+						email: email.toLowerCase().trim(),
+						phoneNumber: phoneNumber.trim(),
+						password: hashedPassword,
+						role: targetRole,
+						patientId: candidatePatientId,
+						accountStatus: "active",
+					});
+					break;
+				} catch (creationError) {
+					if (creationError?.code !== 11000 || !creationError?.message?.includes("patientId")) {
+						throw creationError;
 					}
-					: undefined,
-		});
+				}
+			}
+
+			if (!user) {
+				throw new Error("failed to generate unique patient id");
+			}
+		} else {
+			user = await User.create({
+				name: name.trim(),
+				email: email.toLowerCase().trim(),
+				phoneNumber: phoneNumber.trim(),
+				password: hashedPassword,
+				role: targetRole,
+				accountStatus: "pending",
+				doctorProfile: {
+					specialization: doctorProfile.specialization.trim(),
+					slmcRegistrationNumber: doctorProfile.slmcRegistrationNumber.trim(),
+					yearsOfExperience: Number(doctorProfile.yearsOfExperience),
+					verificationStatus: "pending",
+				},
+			});
+		}
 
 		const token = generateAccessToken({
 			sub: user._id.toString(),
@@ -134,6 +233,150 @@ const register = async (req, res) => {
 		});
 	} catch (error) {
 		return res.status(500).json({ message: "failed to register user", error: error.message });
+	}
+};
+
+const getMyProfile = async (req, res) => {
+	try {
+		const user = await User.findById(req.user.sub);
+		if (!user) {
+			return res.status(404).json({ message: "user not found" });
+		}
+
+		if (user.role === "patient" && !user.patientId) {
+			await assignPatientIdIfMissing(user);
+		}
+
+		return res.status(200).json({ user: sanitizeUser(user) });
+	} catch (error) {
+		return res.status(500).json({ message: "failed to fetch profile", error: error.message });
+	}
+};
+
+const upsertMyPatientProfile = async (req, res) => {
+	try {
+		const user = await User.findById(req.user.sub);
+		if (!user) {
+			return res.status(404).json({ message: "user not found" });
+		}
+
+		if (user.role !== "patient") {
+			return res.status(403).json({ message: "only patients can update patient profile" });
+		}
+
+		const { name, phoneNumber, patientProfile = {} } = req.body;
+
+		if (typeof name === "string") {
+			const trimmedName = name.trim();
+			if (!trimmedName) {
+				return res.status(400).json({ message: "name cannot be empty" });
+			}
+			user.name = trimmedName;
+		}
+
+		if (typeof phoneNumber === "string") {
+			const trimmedPhone = phoneNumber.trim();
+			if (!isValidPhoneNumber(trimmedPhone)) {
+				return res.status(400).json({ message: "invalid phone number format" });
+			}
+
+			if (trimmedPhone !== user.phoneNumber) {
+				const existingPhone = await User.findOne({ phoneNumber: trimmedPhone, _id: { $ne: user._id } });
+				if (existingPhone) {
+					return res.status(409).json({ message: "phone number already in use" });
+				}
+			}
+
+			user.phoneNumber = trimmedPhone;
+		}
+
+		const genderOptions = ["male", "female", "other", "prefer_not_to_say"];
+		if (patientProfile.gender !== undefined) {
+			if (patientProfile.gender && !genderOptions.includes(patientProfile.gender)) {
+				return res.status(400).json({ message: "invalid gender value" });
+			}
+			user.patientProfile = user.patientProfile || {};
+			user.patientProfile.gender = patientProfile.gender || undefined;
+		}
+
+		const bloodGroupOptions = ["A+", "A-", "B+", "B-", "AB+", "AB-", "O+", "O-"];
+		if (patientProfile.bloodGroup !== undefined) {
+			if (patientProfile.bloodGroup && !bloodGroupOptions.includes(patientProfile.bloodGroup)) {
+				return res.status(400).json({ message: "invalid blood group value" });
+			}
+			user.patientProfile = user.patientProfile || {};
+			user.patientProfile.bloodGroup = patientProfile.bloodGroup || undefined;
+		}
+
+		if (patientProfile.dateOfBirth !== undefined) {
+			user.patientProfile = user.patientProfile || {};
+			if (!patientProfile.dateOfBirth) {
+				user.patientProfile.dateOfBirth = undefined;
+			} else {
+				const normalizedDob = String(patientProfile.dateOfBirth).trim();
+				const parsedDob = new Date(`${normalizedDob}T00:00:00`);
+				const today = new Date();
+				today.setHours(0, 0, 0, 0);
+
+				const minAllowedDob = new Date(today);
+				minAllowedDob.setFullYear(minAllowedDob.getFullYear() - 140);
+
+				if (Number.isNaN(parsedDob.getTime()) || parsedDob > today || parsedDob < minAllowedDob) {
+					return res.status(400).json({
+						message: "dateOfBirth must be between today and the last 140 years",
+					});
+				}
+				user.patientProfile.dateOfBirth = parsedDob;
+			}
+		}
+
+		if (patientProfile.photoData !== undefined) {
+			user.patientProfile = user.patientProfile || {};
+			const normalizedPhotoData = (patientProfile.photoData || "").trim();
+			if (normalizedPhotoData) {
+				if (!normalizedPhotoData.startsWith("data:image/")) {
+					return res.status(400).json({ message: "invalid profile photo format" });
+				}
+				if (normalizedPhotoData.length > 2_000_000) {
+					return res.status(400).json({ message: "profile photo is too large" });
+				}
+				user.patientProfile.photoData = normalizedPhotoData;
+			} else {
+				user.patientProfile.photoData = undefined;
+			}
+		}
+
+		if (patientProfile.address !== undefined) {
+			user.patientProfile = user.patientProfile || {};
+			user.patientProfile.address = (patientProfile.address || "").trim() || undefined;
+		}
+
+		if (patientProfile.emergencyContactName !== undefined) {
+			user.patientProfile = user.patientProfile || {};
+			user.patientProfile.emergencyContactName = (patientProfile.emergencyContactName || "").trim() || undefined;
+		}
+
+		if (patientProfile.emergencyContactPhone !== undefined) {
+			user.patientProfile = user.patientProfile || {};
+			const emergencyPhone = (patientProfile.emergencyContactPhone || "").trim();
+			if (emergencyPhone && !isValidPhoneNumber(emergencyPhone)) {
+				return res.status(400).json({ message: "invalid emergency contact phone number format" });
+			}
+			user.patientProfile.emergencyContactPhone = emergencyPhone || undefined;
+		}
+
+		if (!user.patientId) {
+			await assignPatientIdIfMissing(user);
+		} else {
+			await user.save();
+		}
+
+		return res.status(200).json({
+			message: "patient profile updated successfully",
+			user: sanitizeUser(user),
+		});
+	} catch (error) {
+		return res.status(500).json({ message: "failed to update patient profile", error: error.message });
 	}
 };
 
@@ -167,6 +410,10 @@ const login = async (req, res) => {
 		const isPasswordValid = await bcrypt.compare(password, user.password);
 		if (!isPasswordValid) {
 			return res.status(401).json({ message: "invalid credentials" });
+		}
+
+		if (user.role === "patient" && !user.patientId) {
+			await assignPatientIdIfMissing(user);
 		}
 
 		const token = generateAccessToken({
@@ -247,9 +494,126 @@ const getDoctorBookingEligibility = async (req, res) => {
 	}
 };
 
+const updateCurrentUserProfile = async (req, res) => {
+	try {
+		const userId = req.user?.sub;
+		if (!userId) {
+			return res.status(401).json({ message: "invalid authentication token" });
+		}
+
+		const user = await User.findById(userId);
+		if (!user) {
+			return res.status(404).json({ message: "user not found" });
+		}
+
+		const { name, email, phoneNumber, doctorProfile, profilePhoto } = req.body || {};
+
+		if (typeof name === "string") {
+			const trimmedName = name.trim();
+			if (!trimmedName) {
+				return res.status(400).json({ message: "name cannot be empty" });
+			}
+			user.name = trimmedName;
+		}
+
+		if (typeof email === "string") {
+			const normalizedEmail = email.toLowerCase().trim();
+			if (!isValidEmail(normalizedEmail)) {
+				return res.status(400).json({ message: "invalid email format" });
+			}
+
+			const existingEmailUser = await User.findOne({
+				email: normalizedEmail,
+				_id: { $ne: user._id },
+			}).select("_id");
+			if (existingEmailUser) {
+				return res.status(409).json({ message: "email already in use" });
+			}
+
+			user.email = normalizedEmail;
+		}
+
+		if (typeof phoneNumber === "string") {
+			const normalizedPhone = phoneNumber.trim();
+			if (!isValidPhoneNumber(normalizedPhone)) {
+				return res.status(400).json({ message: "invalid phone number format" });
+			}
+
+			const existingPhoneUser = await User.findOne({
+				phoneNumber: normalizedPhone,
+				_id: { $ne: user._id },
+			}).select("_id");
+			if (existingPhoneUser) {
+				return res.status(409).json({ message: "phone number already in use" });
+			}
+
+			user.phoneNumber = normalizedPhone;
+		}
+
+		if (typeof profilePhoto === "string") {
+			const normalizedPhoto = profilePhoto.trim();
+			if (normalizedPhoto) {
+				if (!isValidProfilePhotoDataUrl(normalizedPhoto)) {
+					return res.status(400).json({ message: "profile photo must be a PNG, JPG, or WEBP image" });
+				}
+
+				const photoSizeBytes = getDataUrlByteSize(normalizedPhoto);
+				if (photoSizeBytes > 2 * 1024 * 1024) {
+					return res.status(400).json({ message: "profile photo must be 2MB or smaller" });
+				}
+
+				user.profilePhoto = normalizedPhoto;
+			} else {
+				user.profilePhoto = "";
+			}
+		}
+
+		if (doctorProfile && user.role === "doctor") {
+			if (typeof doctorProfile.specialization === "string") {
+				const specialization = doctorProfile.specialization.trim();
+				if (!specialization) {
+					return res.status(400).json({ message: "specialization cannot be empty" });
+				}
+				user.doctorProfile.specialization = specialization;
+			}
+
+			if (typeof doctorProfile.slmcRegistrationNumber === "string") {
+				const slmcNumber = doctorProfile.slmcRegistrationNumber.trim();
+				if (!slmcNumber) {
+					return res.status(400).json({ message: "SLMC registration number cannot be empty" });
+				}
+				if (!isValidSLMCRegistration(slmcNumber)) {
+					return res.status(400).json({ message: "invalid SLMC registration number format" });
+				}
+				user.doctorProfile.slmcRegistrationNumber = slmcNumber;
+			}
+
+			if (doctorProfile.yearsOfExperience !== undefined) {
+				const years = Number(doctorProfile.yearsOfExperience);
+				if (Number.isNaN(years) || years < 0 || years > 60) {
+					return res.status(400).json({ message: "yearsOfExperience must be between 0 and 60" });
+				}
+				user.doctorProfile.yearsOfExperience = years;
+			}
+		}
+
+		await user.save();
+
+		return res.status(200).json({
+			message: "profile updated successfully",
+			user: sanitizeUser(user),
+		});
+	} catch (error) {
+		return res.status(500).json({ message: "failed to update profile", error: error.message });
+	}
+};
+
 module.exports = {
 	register,
 	login,
 	getDoctors,
 	getDoctorBookingEligibility,
+	getMyProfile,
+	upsertMyPatientProfile,
+	updateCurrentUserProfile,
 };

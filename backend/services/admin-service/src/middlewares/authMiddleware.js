@@ -1,5 +1,7 @@
+// JWT authentication and role-authorization middleware for admin-service
 const jwt = require("jsonwebtoken");
 
+// Validate bearer token and attach decoded user to request
 const requireAuth = (req, res, next) => {
 	const authHeader = req.headers.authorization;
 
@@ -23,6 +25,7 @@ const requireAuth = (req, res, next) => {
 	}
 };
 
+// Allow access only for listed roles
 const authorizeRoles = (...roles) => (req, res, next) => {
 	if (!req.user?.role) {
 		return res.status(403).json({ message: "role not found in token" });
@@ -35,6 +38,7 @@ const authorizeRoles = (...roles) => (req, res, next) => {
 	return next();
 };
 
+// Export middleware helpers
 module.exports = {
 	requireAuth,
 	authorizeRoles,

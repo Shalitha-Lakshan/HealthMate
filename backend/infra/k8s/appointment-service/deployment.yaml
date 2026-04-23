@@ -1,0 +1,51 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: appointment-service
+  namespace: healthmate
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: appointment-service
+  template:
+    metadata:
+      labels:
+        app: appointment-service
+    spec:
+      containers:
+        - name: appointment-service
+          image: healthmate/appointment-service:latest
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: 5004
+          env:
+            - name: AUTH_SERVICE_URL
+              value: http://auth-service:5001/api/auth
+            - name: DOCTOR_SERVICE_URL
+              value: http://doctor-service:5003/api/doctors
+            - name: DOCTOR_INTERNAL_TOKEN
+              value: healthmate-internal-token
+            - name: NOTIFICATION_SERVICE_URL
+              value: http://notification-service:5006/api/notifications
+          envFrom:
+            - configMapRef:
+                name: appointment-service-config
+                optional: true
+            - secretRef:
+                name: appointment-service-secret
+                optional: true
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: appointment-service
+  namespace: healthmate
+spec:
+  selector:
+    app: appointment-service
+  ports:
+    - protocol: TCP
+      port: 5004
+      targetPort: 5004
+  type: ClusterIP

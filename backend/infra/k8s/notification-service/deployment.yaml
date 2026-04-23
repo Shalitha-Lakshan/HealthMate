@@ -1,0 +1,42 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: notification-service
+  namespace: healthmate
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: notification-service
+  template:
+    metadata:
+      labels:
+        app: notification-service
+    spec:
+      containers:
+        - name: notification-service
+          image: healthmate/notification-service:latest
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: 5006
+          envFrom:
+            - configMapRef:
+                name: notification-service-config
+                optional: true
+            - secretRef:
+                name: notification-service-secret
+                optional: true
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: notification-service
+  namespace: healthmate
+spec:
+  selector:
+    app: notification-service
+  ports:
+    - protocol: TCP
+      port: 5006
+      targetPort: 5006
+  type: ClusterIP

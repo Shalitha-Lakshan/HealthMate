@@ -20,6 +20,12 @@ const userSchema = new mongoose.Schema(
 			unique: true,
 			trim: true,
 		},
+		patientId: {
+			type: String,
+			unique: true,
+			sparse: true,
+			trim: true,
+		},
 		password: {
 			type: String,
 			required: true,
@@ -29,6 +35,10 @@ const userSchema = new mongoose.Schema(
 			type: String,
 			enum: ["patient", "doctor", "admin"],
 			default: "patient",
+		},
+		profilePhoto: {
+			type: String,
+			default: "",
 		},
 		accountStatus: {
 			type: String,
@@ -62,6 +72,34 @@ const userSchema = new mongoose.Schema(
 			},
 			verificationReviewedBy: {
 				type: mongoose.Schema.Types.ObjectId,
+			},
+		},
+		patientProfile: {
+			photoData: {
+				type: String,
+			},
+			dateOfBirth: {
+				type: Date,
+			},
+			gender: {
+				type: String,
+				enum: ["male", "female", "other", "prefer_not_to_say"],
+			},
+			bloodGroup: {
+				type: String,
+				enum: ["A+", "A-", "B+", "B-", "AB+", "AB-", "O+", "O-"],
+			},
+			address: {
+				type: String,
+				trim: true,
+			},
+			emergencyContactName: {
+				type: String,
+				trim: true,
+			},
+			emergencyContactPhone: {
+				type: String,
+				trim: true,
 			},
 		},
 	},

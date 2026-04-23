@@ -1,8 +1,13 @@
 // src/pages/DoctorConsultationsPage.jsx
 import { useState, useEffect } from "react";
-import { fetchDoctorAppointments, completeConsultation } from "../services/appointmentApi";
+import {
+	fetchDoctorAppointments,
+	completeConsultation,
+} from "../services/appointmentApi";
 import { getStoredUser } from "../utils/auth";
 import { format, parseISO } from "date-fns";
+import DoctorTelemedicinePage from "./DoctorTelemedicinePage";
+import DoctorPrescriptionsPage from "./DoctorPrescriptionsPage";
 
 export default function DoctorConsultationsPage() {
 	const user = getStoredUser() || {};
@@ -12,6 +17,67 @@ export default function DoctorConsultationsPage() {
 	const [loading, setLoading] = useState(true);
 	const [activeTab, setActiveTab] = useState("Upcoming");
 	const [selectedConsultation, setSelectedConsultation] = useState(null);
+	const [activeActionPage, setActiveActionPage] = useState("consultations");
+	const [isCompleting, setIsCompleting] = useState(false);
+	const [telemedicineRoomId, setTelemedicineRoomId] = useState("");
+
+	const getAppointmentStart = (appointment) => {
+		if (!appointment) {
+			return null;
+		}
+
+		const dateTimeValue = appointment.appointmentDateTime
+			|| (appointment.appointmentDate && appointment.slotTime
+				? `${appointment.appointmentDate}T${appointment.slotTime}:00`
+				: appointment.appointmentDate
+					? `${appointment.appointmentDate}T00:00:00`
+					: null);
+
+		if (!dateTimeValue) {
+			return null;
+		}
+
+		const parsed = new Date(dateTimeValue);
+		return Number.isNaN(parsed.getTime()) ? null : parsed;
+	};
+
+	const canJoinTelemedicine = (appointment) => {
+		if (!appointment || appointment.mode !== "online" || appointment.status !== "confirmed") {
+			return false;
+		}
+
+		const startTime = getAppointmentStart(appointment);
+		if (!startTime) {
+			return false;
+		}
+
+		const now = Date.now();
+		const start = startTime.getTime();
+		const end = start + 60 * 60 * 1000;
+		return now >= start && now <= end;
+	};
+
+	const handleJoinTelemedicine = (appointment) => {
+		const roomId = appointment?.appointmentId || appointment?._id || appointment?.id;
+		if (!roomId) {
+			return;
+		}
+		setTelemedicineRoomId(String(roomId));
+		setActiveActionPage("telemedicine");
+	};
+
+	const handleOpenPrescription = (consultation) => {
+		if (!consultation) {
+			return;
+		}
+
+		if (consultation.status !== "completed") {
+			alert("Complete the consultation first, then issue prescription.");
+			return;
+		}
+
+		setActiveActionPage("prescriptions");
+	};
 
 	useEffect(() => {
 		async function fetchConsultations() {
@@ -39,21 +105,73 @@ export default function DoctorConsultationsPage() {
 		return true;
 	});
 
-	const handleComplete = async (appointmentId) => {
+	const getConsultationId = (consultation) => consultation?._id || consultation?.id || "";
+
+	const handleComplete = async (consultation) => {
+		const appointmentId = getConsultationId(consultation);
+		if (!appointmentId) {
+			alert("Appointment ID is missing.");
+			return;
+		}
+
 		try {
+			setIsCompleting(true);
 			await completeConsultation(appointmentId);
 			// Update local state to reflect the change
-			setAppointments(prev => prev.map(apt => 
-				apt._id === appointmentId ? { ...apt, status: "completed" } : apt
+			setAppointments((prev) => prev.map((apt) =>
+				getConsultationId(apt) === appointmentId ? { ...apt, status: "completed" } : apt
 			));
-			if (selectedConsultation?._id === appointmentId) {
-				setSelectedConsultation(prev => ({ ...prev, status: "completed" }));
+			if (getConsultationId(selectedConsultation) === appointmentId) {
+				setSelectedConsultation((prev) => ({ ...prev, status: "completed" }));
 			}
+			alert("Consultation marked as completed.");
 		} catch (error) {
 			console.error("Failed to complete consultation:", error);
-			alert("Failed to mark consultation as completed.");
+			alert(error?.response?.data?.message || "Failed to mark consultation as completed.");
+		} finally {
+			setIsCompleting(false);
 		}
 	};
+
+	if (activeActionPage === "telemedicine") {
+		return (
+			<div className="space-y-4">
+				<div className="flex items-center justify-between rounded-2xl border border-slate-200 bg-white p-4">
+					<div>
+						<p className="text-sm font-semibold text-slate-900">Telemedicine Session</p>
+						<p className="text-xs text-slate-500">Started from consultation profile.</p>
+					</div>
+					<button
+						onClick={() => setActiveActionPage("consultations")}
+						className="rounded-lg border border-slate-300 px-3 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-50"
+					>
+						Back to Consultations
+					</button>
+				</div>
+				<DoctorTelemedicinePage initialRoomId={telemedicineRoomId} />
+			</div>
+		);
+	}
+
+	if (activeActionPage === "prescriptions") {
+		return (
+			<div className="space-y-4">
+				<div className="flex items-center justify-between rounded-2xl border border-slate-200 bg-white p-4">
+					<div>
+						<p className="text-sm font-semibold text-slate-900">Digital Prescription</p>
+						<p className="text-xs text-slate-500">Opened from consultation profile.</p>
+					</div>
+					<button
+						onClick={() => setActiveActionPage("consultations")}
+						className="rounded-lg border border-slate-300 px-3 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-50"
+					>
+						Back to Consultations
+					</button>
+				</div>
+				<DoctorPrescriptionsPage consultation={selectedConsultation} />
+			</div>
+		);
+	}
 
 	return (
 		<div className="space-y-6">
@@ -117,10 +235,10 @@ export default function DoctorConsultationsPage() {
 							<div className="space-y-3">
 								{filteredConsultations.map((consult) => (
 									<div
-										key={consult._id}
+										key={getConsultationId(consult)}
 										onClick={() => setSelectedConsultation(consult)}
 										className={`group cursor-pointer rounded-xl border p-4 transition-all hover:shadow-md ${
-											selectedConsultation?._id === consult._id
+											getConsultationId(selectedConsultation) === getConsultationId(consult)
 												? "border-blue-300 bg-blue-50"
 												: "border-slate-200 bg-white hover:border-blue-200 hover:bg-slate-50"
 										}`}
@@ -145,7 +263,7 @@ export default function DoctorConsultationsPage() {
 											</div>
 											<div className="flex items-center gap-3 w-full sm:w-auto justify-end border-t border-slate-100 pt-3 sm:border-0 sm:pt-0">
 												<span className={`rounded-full px-2.5 py-1 text-[11px] font-medium tracking-wide ${
-													consult.status === "confirmed" ? "bg-blue-100 text-blue-700" :
+														consult.status === "confirmed" ? "bg-blue-100 text-blue-700" :
 													consult.status === "completed" ? "bg-emerald-100 text-emerald-700" :
 													consult.status === "cancelled" ? "bg-red-100 text-red-700" :
 													"bg-slate-100 text-slate-700"
@@ -222,22 +340,35 @@ export default function DoctorConsultationsPage() {
 
 								<div className="mt-6 pt-5 border-t border-slate-100 space-y-2">
 									{selectedConsultation.status === "confirmed" && selectedConsultation.mode === "online" && (
-										<button className="w-full rounded-xl bg-blue-600 px-4 py-2.5 text-sm font-semibold text-white shadow-sm hover:bg-blue-700 transition flex justify-center items-center gap-2">
+										<button
+											onClick={() => handleJoinTelemedicine(selectedConsultation)}
+											disabled={!canJoinTelemedicine(selectedConsultation)}
+											title={
+												canJoinTelemedicine(selectedConsultation)
+													? "Join telemedicine session"
+													: "Join is available only within one hour from the scheduled time"
+											}
+											className="w-full rounded-xl bg-blue-600 px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition flex justify-center items-center gap-2 disabled:cursor-not-allowed disabled:bg-slate-300"
+										>
 											<svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
 												<path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z" />
 											</svg>
-											Start Video Call
+											{canJoinTelemedicine(selectedConsultation) ? "Join Video Call" : "Join unavailable"}
 										</button>
 									)}
-									<button className="w-full rounded-xl border border-slate-300 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 shadow-sm hover:bg-slate-50 hover:text-slate-900 transition">
-										Issue Digital Prescription
+										<button
+											onClick={() => handleOpenPrescription(selectedConsultation)}
+											className="w-full rounded-xl border border-slate-300 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 shadow-sm hover:bg-slate-50 hover:text-slate-900 transition"
+										>
+											Issue Digital Prescription
 									</button>
 									{selectedConsultation.status === "confirmed" && (
 										<button 
-											onClick={() => handleComplete(selectedConsultation._id)}
-											className="w-full rounded-xl bg-slate-100 px-4 py-2 text-xs font-medium text-slate-600 hover:bg-slate-200 transition"
+												onClick={() => handleComplete(selectedConsultation)}
+												disabled={isCompleting}
+												className="w-full rounded-xl bg-slate-100 px-4 py-2 text-xs font-medium text-slate-600 hover:bg-slate-200 transition disabled:cursor-not-allowed disabled:opacity-60"
 										>
-											Mark as Completed
+												{isCompleting ? "Updating..." : "Mark as Completed"}
 										</button>
 									)}
 								</div>

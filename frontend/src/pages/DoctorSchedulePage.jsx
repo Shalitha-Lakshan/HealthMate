@@ -1,11 +1,92 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { getStoredUser } from "../utils/auth";
-import { fetchDoctorAppointments } from "../services/appointmentApi";
+import {
+	fetchDoctorAppointments,
+	approveDoctorAppointment,
+	cancelDoctorAppointment,
+} from "../services/appointmentApi";
 import { getDoctorAvailability, updateDoctorAvailability } from "../services/doctorApi";
 import Calendar from "react-calendar";
 import "react-calendar/dist/Calendar.css";
 
-function DoctorSchedulePage() {
+const WEEK_DAYS = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"];
+
+const convertTo12HourLabel = (timeValue) => {
+	if (!timeValue || typeof timeValue !== "string") {
+		return "";
+	}
+
+	const raw = timeValue.trim();
+	const twelveHourMatch = raw.match(/^(\d{1,2}):(\d{2})\s?(AM|PM)$/i);
+	if (twelveHourMatch) {
+		const hours = String(Number(twelveHourMatch[1])).padStart(2, "0");
+		const minutes = twelveHourMatch[2];
+		const meridiem = twelveHourMatch[3].toUpperCase();
+		return `${hours}:${minutes} ${meridiem}`;
+	}
+
+	const twentyFourHourMatch = raw.match(/^(\d{1,2}):(\d{2})$/);
+	if (!twentyFourHourMatch) {
+		return "";
+	}
+
+	const hours24 = Number(twentyFourHourMatch[1]);
+	const minutes = Number(twentyFourHourMatch[2]);
+	if (Number.isNaN(hours24) || Number.isNaN(minutes) || hours24 > 23 || minutes > 59) {
+		return "";
+	}
+
+	const meridiem = hours24 >= 12 ? "PM" : "AM";
+	const hours12 = hours24 % 12 || 12;
+	return `${String(hours12).padStart(2, "0")}:${String(minutes).padStart(2, "0")} ${meridiem}`;
+};
+
+const buildDefaultAvailability = () => [
+	{ day: "Monday", isWorking: true, startTime: "09:00 AM", endTime: "05:00 PM" },
+	{ day: "Tuesday", isWorking: true, startTime: "09:00 AM", endTime: "05:00 PM" },
+	{ day: "Wednesday", isWorking: true, startTime: "09:00 AM", endTime: "05:00 PM" },
+	{ day: "Thursday", isWorking: true, startTime: "09:00 AM", endTime: "05:00 PM" },
+	{ day: "Friday", isWorking: true, startTime: "09:00 AM", endTime: "05:00 PM" },
+	{ day: "Saturday", isWorking: false, startTime: "09:00 AM", endTime: "01:00 PM" },
+	{ day: "Sunday", isWorking: false, startTime: "09:00 AM", endTime: "01:00 PM" },
+];
+
+const normalizeAvailabilitySlots = (slots = []) => {
+	const defaultsByDay = buildDefaultAvailability().reduce((acc, slot) => {
+		acc[slot.day.toLowerCase()] = slot;
+		return acc;
+	}, {});
+
+	const incomingByDay = (Array.isArray(slots) ? slots : []).reduce((acc, slot) => {
+		const dayKey = String(slot?.day || "").trim().toLowerCase();
+		if (dayKey) {
+			acc[dayKey] = slot;
+		}
+		return acc;
+	}, {});
+
+	return WEEK_DAYS.map((day) => {
+		const dayKey = day.toLowerCase();
+		const defaultSlot = defaultsByDay[dayKey];
+		const incomingSlot = incomingByDay[dayKey] || null;
+
+		const startTime = convertTo12HourLabel(incomingSlot?.startTime) || defaultSlot.startTime;
+		const endTime = convertTo12HourLabel(incomingSlot?.endTime) || defaultSlot.endTime;
+		const isWorking =
+			typeof incomingSlot?.isWorking === "boolean"
+				? incomingSlot.isWorking
+				: Boolean(incomingSlot);
+
+		return {
+			day,
+			isWorking,
+			startTime,
+			endTime,
+		};
+	});
+};
+
+function DoctorSchedulePage({ onOpenTelemedicine = () => {} }) {
 	const [activeTab, setActiveTab] = useState("calendar");
 	const [selectedDate, setSelectedDate] = useState(new Date());
 	const [appointments, setAppointments] = useState([]);
@@ -13,6 +94,7 @@ function DoctorSchedulePage() {
 	const [availability, setAvailability] = useState([]);
 	const [saving, setSaving] = useState(false);
 	const [selectedAppointment, setSelectedAppointment] = useState(null);
+	const [isUpdatingDecision, setIsUpdatingDecision] = useState(false);
 	
 	const user = getStoredUser() || {};
 	const doctorId = user.id || user._id;
@@ -23,28 +105,22 @@ function DoctorSchedulePage() {
 			if (!doctorId) return;
 			setLoading(true);
 			try {
-				if (activeTab === "calendar") {
+				if (activeTab === "calendar" || activeTab === "requests") {
 					const data = await fetchDoctorAppointments(doctorId);
 					setAppointments(data.appointments || []);
 				} else if (activeTab === "availability") {
 					const data = await getDoctorAvailability(doctorId, token);
 					if (data && data.slots && data.slots.length > 0) {
-						setAvailability(data.slots);
+						setAvailability(normalizeAvailabilitySlots(data.slots));
 					} else {
-						// Initialize with default if not found
-						setAvailability([
-							{ day: "Monday", isWorking: true, startTime: "09:00 AM", endTime: "05:00 PM" },
-							{ day: "Tuesday", isWorking: true, startTime: "09:00 AM", endTime: "05:00 PM" },
-							{ day: "Wednesday", isWorking: true, startTime: "09:00 AM", endTime: "05:00 PM" },
-							{ day: "Thursday", isWorking: true, startTime: "09:00 AM", endTime: "05:00 PM" },
-							{ day: "Friday", isWorking: true, startTime: "09:00 AM", endTime: "05:00 PM" },
-							{ day: "Saturday", isWorking: false, startTime: "09:00 AM", endTime: "01:00 PM" },
-							{ day: "Sunday", isWorking: false, startTime: "09:00 AM", endTime: "01:00 PM" },
-						]);
+						setAvailability(buildDefaultAvailability());
 					}
 				}
 			} catch (err) {
 				console.error("Failed to load data", err);
+				if (activeTab === "availability") {
+					setAvailability(buildDefaultAvailability());
+				}
 			} finally {
 				setLoading(false);
 			}
@@ -70,6 +146,49 @@ function DoctorSchedulePage() {
 		const newAvailability = [...availability];
 		newAvailability[index][field] = value;
 		setAvailability(newAvailability);
+	};
+
+	const getAppointmentId = (appointment) => appointment?._id || appointment?.id || "";
+	const normalizeStatus = (statusValue) => (statusValue || "").toString().trim().toLowerCase();
+
+	const handleAppointmentDecision = async (appointment, decision) => {
+		const appointmentId = getAppointmentId(appointment);
+		if (!appointmentId) {
+			alert("Appointment ID is missing.");
+			return;
+		}
+
+		if (decision === "cancel") {
+			const shouldCancel = window.confirm("Cancel this appointment?");
+			if (!shouldCancel) return;
+		}
+
+		try {
+			setIsUpdatingDecision(true);
+			const response = decision === "confirm"
+				? await approveDoctorAppointment(appointmentId)
+				: await cancelDoctorAppointment(appointmentId);
+
+			const nextStatus = response?.appointment?.status || (decision === "confirm" ? "pending_payment" : "cancelled");
+
+			setAppointments((prev) => prev.map((item) => (
+				getAppointmentId(item) === appointmentId ? { ...item, status: nextStatus } : item
+			)));
+
+			setSelectedAppointment((prev) => (
+				prev && getAppointmentId(prev) === appointmentId ? { ...prev, status: nextStatus } : prev
+			));
+
+			alert(
+				decision === "confirm"
+					? "Appointment confirmed. Patient can now proceed with payment."
+					: "Appointment cancelled."
+			);
+		} catch (error) {
+			alert(error?.response?.data?.message || `Failed to ${decision} appointment.`);
+		} finally {
+			setIsUpdatingDecision(false);
+		}
 	};
 
 	const timeOptions = [];
@@ -115,7 +234,7 @@ function DoctorSchedulePage() {
 			case "confirmed":
 				return { label: "Confirmed", className: "bg-green-100 text-green-700" };
 			case "pending":
-				return { label: "Pending", className: "bg-blue-100 text-blue-700" };
+				return { label: "Pending Confirmation", className: "bg-blue-100 text-blue-700" };
 			case "pending_payment":
 				return { label: "Pending Payment", className: "bg-amber-100 text-amber-700" };
 			case "completed":
@@ -135,6 +254,58 @@ function DoctorSchedulePage() {
 				};
 		}
 	};
+
+	const getAppointmentStart = (appointment) => {
+		if (!appointment) {
+			return null;
+		}
+
+		const dateTimeValue = appointment.appointmentDateTime
+			|| (appointment.appointmentDate && appointment.slotTime
+				? `${appointment.appointmentDate}T${appointment.slotTime}:00`
+				: appointment.appointmentDate
+					? `${appointment.appointmentDate}T00:00:00`
+					: null);
+
+		if (!dateTimeValue) {
+			return null;
+		}
+
+		const parsed = new Date(dateTimeValue);
+		return Number.isNaN(parsed.getTime()) ? null : parsed;
+	};
+
+	const canJoinTelemedicine = (appointment) => {
+		if (!appointment || appointment.mode !== "online" || appointment.status !== "confirmed") {
+			return false;
+		}
+
+		const startTime = getAppointmentStart(appointment);
+		if (!startTime) {
+			return false;
+		}
+
+		const now = Date.now();
+		const start = startTime.getTime();
+		const end = start + 60 * 60 * 1000;
+		return now >= start && now <= end;
+	};
+
+	const handleJoinTelemedicine = (appointment) => {
+		const roomId = appointment?.appointmentId || appointment?._id || appointment?.id;
+		onOpenTelemedicine(roomId);
+	};
+
+	const appointmentDateKeys = useMemo(() => {
+		const keys = new Set();
+		appointments.forEach((app) => {
+			const dateKey = toDateKey(app.appointmentDate || app.appointmentDateTime);
+			if (dateKey) {
+				keys.add(dateKey);
+			}
+		});
+		return keys;
+	}, [appointments]);
 
 	const scheduleData = appointments
 		.filter((app) => {
@@ -157,10 +328,27 @@ function DoctorSchedulePage() {
 			};
 		});
 
+	const pendingRequests = appointments
+		.filter((appointment) => normalizeStatus(appointment.status) === "pending")
+		.sort((first, second) => new Date(first.appointmentDateTime) - new Date(second.appointmentDateTime));
+
 	// Calculate Daily Summary logic
 	const totalSlots = availability.length > 0 ? availability.length * 8 : 16; // Simple estimation based on hours 
 	const bookedSlots = scheduleData.length;
 	const availableSlots = Math.max(0, totalSlots - bookedSlots);
+
+	const getCalendarTileClassName = ({ date, view }) => {
+		if (view !== "month") {
+			return "";
+		}
+
+		const dateKey = toDateKey(date);
+		if (!appointmentDateKeys.has(dateKey)) {
+			return "";
+		}
+
+		return "bg-amber-100 text-amber-900 font-semibold rounded-lg ring-1 ring-amber-200";
+	};
 
 	return (
 		<div className="space-y-6">
@@ -181,6 +369,16 @@ function DoctorSchedulePage() {
 					}`}
 				>
 					Daily Schedule
+				</button>
+				<button
+					onClick={() => setActiveTab("requests")}
+					className={`pb-4 -mb-4 text-sm font-medium transition ${
+						activeTab === "requests"
+							? "border-b-2 border-blue-600 text-blue-700"
+							: "text-slate-500 hover:text-slate-700"
+					}`}
+				>
+					Appointment Requests
 				</button>
 				<button
 					onClick={() => setActiveTab("availability")}
@@ -228,6 +426,26 @@ function DoctorSchedulePage() {
 											<span className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-semibold ${slot.statusClassName}`}>
 												{slot.statusLabel}
 											</span>
+											{normalizeStatus(slot.raw?.status) === "pending" && (
+												<div className="flex items-center gap-2" onClick={(event) => event.stopPropagation()}>
+													<button
+														type="button"
+														onClick={() => handleAppointmentDecision(slot.raw, "confirm")}
+														disabled={isUpdatingDecision}
+														className="rounded-lg bg-emerald-600 px-2.5 py-1.5 text-[11px] font-semibold text-white hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-60"
+													>
+														Confirm
+													</button>
+													<button
+														type="button"
+														onClick={() => handleAppointmentDecision(slot.raw, "cancel")}
+														disabled={isUpdatingDecision}
+														className="rounded-lg border border-rose-300 bg-white px-2.5 py-1.5 text-[11px] font-semibold text-rose-700 hover:bg-rose-50 disabled:cursor-not-allowed disabled:opacity-60"
+													>
+														Cancel
+													</button>
+												</div>
+											)}
 											<button 
 												onClick={() => setSelectedAppointment(slot.raw)}
 												className="rounded-lg border border-slate-200 px-3 py-1.5 text-sm font-medium text-slate-700 hover:bg-slate-50"
@@ -250,9 +468,14 @@ function DoctorSchedulePage() {
 								<Calendar 
 									onChange={setSelectedDate} 
 									value={selectedDate} 
+									tileClassName={getCalendarTileClassName}
 									className="w-full text-sm text-slate-700"
 								/>
 							</div>
+							<p className="mt-3 text-xs text-slate-500">
+								<span className="mr-1 inline-block h-2 w-2 rounded-full bg-amber-400 align-middle"></span>
+								Highlighted dates have appointments.
+							</p>
 						</div>
 						
 						<div className="rounded-2xl border border-slate-200 bg-white p-5">
@@ -272,6 +495,52 @@ function DoctorSchedulePage() {
 								</div>
 							</div>
 						</div>
+					</div>
+				</div>
+			)}
+
+			{activeTab === "requests" && (
+				<div className="rounded-2xl border border-slate-200 bg-white shadow-sm">
+					<div className="border-b border-slate-200 p-5">
+						<h3 className="font-semibold text-slate-900">Pending Appointment Requests</h3>
+						<p className="mt-1 text-xs text-slate-500">Review and confirm/cancel patient appointment requests.</p>
+					</div>
+					<div className="divide-y divide-slate-100">
+						{loading ? (
+							<div className="p-5 text-sm text-slate-500">Loading requests...</div>
+						) : pendingRequests.length === 0 ? (
+							<div className="p-5 text-sm text-slate-500">No pending requests right now.</div>
+						) : (
+							pendingRequests.map((request) => (
+								<div key={request._id || request.id} className="flex flex-col gap-3 p-5 sm:flex-row sm:items-center sm:justify-between">
+									<div>
+										<p className="font-semibold text-slate-900">{request.patientName}</p>
+										<p className="mt-1 text-xs text-slate-500">
+											{request.appointmentDate} at {request.slotTime} • {request.mode}
+										</p>
+										<p className="mt-1 text-xs text-slate-600">Reason: {request.reason}</p>
+									</div>
+									<div className="flex items-center gap-2">
+										<button
+											type="button"
+											onClick={() => handleAppointmentDecision(request, "confirm")}
+											disabled={isUpdatingDecision}
+											className="rounded-lg bg-emerald-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-60"
+										>
+											{isUpdatingDecision ? "Updating..." : "Confirm"}
+										</button>
+										<button
+											type="button"
+											onClick={() => handleAppointmentDecision(request, "cancel")}
+											disabled={isUpdatingDecision}
+											className="rounded-lg border border-rose-300 bg-white px-3 py-1.5 text-xs font-semibold text-rose-700 hover:bg-rose-50 disabled:cursor-not-allowed disabled:opacity-60"
+										>
+											{isUpdatingDecision ? "Updating..." : "Cancel"}
+										</button>
+									</div>
+								</div>
+							))
+						)}
 					</div>
 				</div>
 			)}
@@ -385,9 +654,38 @@ function DoctorSchedulePage() {
 							<button onClick={() => setSelectedAppointment(null)} className="rounded-xl border border-slate-200 px-4 py-2 text-sm font-semibold text-slate-700 transition hover:bg-slate-50">
 								Close
 							</button>
-							{selectedAppointment.status === "confirmed" && selectedAppointment.mode === "online" && (
-								<button className="rounded-xl bg-blue-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-blue-700">
-									Start Video Call
+							{["pending", "pending_payment", "confirmed"].includes(normalizeStatus(selectedAppointment.status)) && (
+								<>
+									<button
+										onClick={() => handleAppointmentDecision(selectedAppointment, "cancel")}
+										disabled={isUpdatingDecision}
+										className="rounded-xl border border-rose-300 bg-white px-4 py-2 text-sm font-semibold text-rose-700 transition hover:bg-rose-50 disabled:cursor-not-allowed disabled:opacity-60"
+									>
+										{isUpdatingDecision ? "Updating..." : "Cancel Appointment"}
+									</button>
+									{normalizeStatus(selectedAppointment.status) === "pending" && (
+										<button
+											onClick={() => handleAppointmentDecision(selectedAppointment, "confirm")}
+											disabled={isUpdatingDecision}
+											className="rounded-xl bg-emerald-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-60"
+										>
+											{isUpdatingDecision ? "Updating..." : "Confirm Appointment"}
+										</button>
+									)}
+								</>
+							)}
+							{normalizeStatus(selectedAppointment.status) === "confirmed" && selectedAppointment.mode === "online" && (
+								<button
+									onClick={() => handleJoinTelemedicine(selectedAppointment)}
+									disabled={!canJoinTelemedicine(selectedAppointment)}
+									title={
+										canJoinTelemedicine(selectedAppointment)
+											? "Join telemedicine session"
+											: "Join is available only within one hour from the scheduled time"
+									}
+									className="rounded-xl bg-blue-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:bg-slate-300"
+								>
+									{canJoinTelemedicine(selectedAppointment) ? "Join Video Call" : "Join unavailable"}
 								</button>
 							)}
 						</div>

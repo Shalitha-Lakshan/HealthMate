@@ -1,11 +1,16 @@
+// Mongoose model for payment transactions
+// Only comments added, no code changes
+// Import mongoose for schema/model
 const mongoose = require("mongoose");
 
+// Helper to generate unique transaction IDs
 const generateTransactionId = () => {
 	const datePart = new Date().toISOString().slice(0, 10).replace(/-/g, "");
 	const randomPart = Math.random().toString(36).slice(2, 10).toUpperCase();
 	return `PAY-${datePart}-${randomPart}`;
 };
 
+// Payment transaction schema definition
 const paymentTransactionSchema = new mongoose.Schema(
 	{
 		transactionId: {

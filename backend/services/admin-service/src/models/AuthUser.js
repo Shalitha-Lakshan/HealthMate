@@ -1,3 +1,5 @@
+// Dynamic User model adapter for auth database
+// Used by admin-service to read/write user records
 const mongoose = require("mongoose");
 const { getAuthConnection } = require("../config/authDb");
 
@@ -6,6 +8,7 @@ const authUserSchema = new mongoose.Schema(
 		name: { type: String, trim: true },
 		email: { type: String, trim: true, lowercase: true },
 		phoneNumber: { type: String, trim: true },
+		patientId: { type: String, trim: true },
 		password: { type: String, select: false },
 		role: { type: String, enum: ["patient", "doctor", "admin"] },
 		accountStatus: { type: String, enum: ["active", "pending", "suspended", "deactivated"], default: "active" },
@@ -22,6 +25,7 @@ const authUserSchema = new mongoose.Schema(
 	{ timestamps: true, strict: false }
 );
 
+// Return User model from auth DB connection
 const getAuthUserModel = async () => {
 	const connection = await getAuthConnection();
 	return connection.models.User || connection.model("User", authUserSchema, "users");

@@ -1,3 +1,5 @@
+// Payment transaction read model for admin-service
+// Uses payment DB connection to read transaction analytics data
 const mongoose = require("mongoose");
 const { getPaymentConnection } = require("../config/paymentDb");
 
@@ -19,6 +21,7 @@ const paymentTransactionSchema = new mongoose.Schema(
 	{ timestamps: true, strict: false }
 );
 
+// Return PaymentTransaction model from payment DB connection
 const getPaymentTransactionModel = async () => {
 	const connection = await getPaymentConnection();
 	return (
