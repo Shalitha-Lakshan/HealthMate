@@ -30,7 +30,7 @@ services:
       - key: AI_SERVICE_URL
         value: http://ai-service:5010
 
-  - type: pserv
+  - type: web
     name: auth-service
     env: docker
     plan: free
@@ -49,7 +49,7 @@ services:
       - key: INTERNAL_SERVICE_TOKEN
         sync: false
 
-  - type: pserv
+  - type: web
     name: patient-service
     env: docker
     plan: free
@@ -64,7 +64,7 @@ services:
       - key: JWT_SECRET
         sync: false
 
-  - type: pserv
+  - type: web
     name: doctor-service
     env: docker
     plan: free
@@ -79,7 +79,7 @@ services:
       - key: JWT_SECRET
         sync: false
 
-  - type: pserv
+  - type: web
     name: appointment-service
     env: docker
     plan: free
@@ -110,7 +110,7 @@ services:
       - key: DEFAULT_CONSULTATION_FEE
         value: "3500"
 
-  - type: pserv
+  - type: web
     name: payment-service
     env: docker
     plan: free
@@ -135,7 +135,7 @@ services:
       - key: PAYMENT_CANCEL_URL
         sync: false
 
-  - type: pserv
+  - type: web
     name: notification-service
     env: docker
     plan: free
@@ -176,7 +176,7 @@ services:
       - key: CHROMIUM_PATH
         sync: false
 
-  - type: pserv
+  - type: web
     name: telemedicine-service
     env: docker
     plan: free
@@ -195,7 +195,7 @@ services:
       - key: AGORA_TOKEN_EXPIRE_SECONDS
         value: "3600"
 
-  - type: pserv
+  - type: web
     name: prescription-service
     env: docker
     plan: free
@@ -214,7 +214,7 @@ services:
       - key: APPOINTMENT_INTERNAL_TOKEN
         sync: false
 
-  - type: pserv
+  - type: web
     name: admin-service
     env: docker
     plan: free
@@ -237,7 +237,7 @@ services:
       - key: NOTIFICATION_INTERNAL_TOKEN
         sync: false
 
-  - type: pserv
+  - type: web
     name: ai-service
     env: docker
     plan: free
