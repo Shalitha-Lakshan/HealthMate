@@ -72,8 +72,8 @@ function DashboardShell({ role = "patient", title, subtitle, children, onMenuCha
 				>
 					<div className="flex h-full flex-col">
 					<div className="flex items-center gap-3 border-b border-slate-200 pb-5">
-						<div className="flex h-10 w-10 items-center justify-center rounded-xl bg-blue-600 text-sm font-bold text-white shadow-sm">
-							H
+						<div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-white shadow-sm">
+							<img src="/icons.svg" alt="HealthMate logo" className="h-10 w-10" />
 						</div>
 						<div>
 							<p className="text-sm font-bold text-slate-900">HealthMate</p>

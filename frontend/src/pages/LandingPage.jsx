@@ -33,8 +33,8 @@ function LandingPage() {
 
 			<header className="relative z-10 flex w-full items-center justify-between px-6 py-5 lg:px-12">
 				<div className="flex items-center gap-3">
-					<div className="flex h-10 w-10 items-center justify-center rounded-xl bg-blue-600 text-lg font-bold text-white">
-						H
+					<div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-white shadow-sm">
+						<img src="/icons.svg" alt="HealthMate logo" className="h-10 w-10" />
 					</div>
 					<div>
 						<p className="text-lg font-semibold">HealthMate</p>

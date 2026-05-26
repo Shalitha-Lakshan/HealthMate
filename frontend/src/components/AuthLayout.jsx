@@ -9,8 +9,8 @@ function AuthLayout({ title, subtitle, children, footerText, footerLink, footerL
 				<div className="grid min-h-155 lg:grid-cols-2">
 					<section className="auth-gradient relative flex flex-col justify-between px-8 py-10 text-white sm:px-10 sm:py-12">
 						<Link to="/" className="inline-flex items-center gap-3">
-							<div className="flex h-10 w-10 items-center justify-center rounded-xl bg-white/20 text-lg font-bold">
-								H
+							<div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-white/20">
+								<img src="/icons.svg" alt="HealthMate logo" className="h-10 w-10" />
 							</div>
 							<div>
 								<p className="text-lg font-semibold">HealthMate</p>
