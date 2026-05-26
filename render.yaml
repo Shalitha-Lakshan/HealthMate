@@ -1,0 +1,265 @@
+services:
+  - type: web
+    name: gateway
+    env: docker
+    plan: free
+    autoDeploy: true
+    rootDir: backend/gateway
+    dockerfilePath: backend/gateway/Dockerfile
+    envVars:
+      - key: PORT
+        value: "5000"
+      - key: AUTH_SERVICE_URL
+        value: http://auth-service:5001
+      - key: PATIENT_SERVICE_URL
+        value: http://patient-service:5002
+      - key: DOCTOR_SERVICE_URL
+        value: http://doctor-service:5003
+      - key: APPOINTMENT_SERVICE_URL
+        value: http://appointment-service:5004
+      - key: PAYMENT_SERVICE_URL
+        value: http://payment-service:5005
+      - key: NOTIFICATION_SERVICE_URL
+        value: http://notification-service:5006
+      - key: TELEMEDICINE_SERVICE_URL
+        value: http://telemedicine-service:5007
+      - key: PRESCRIPTION_SERVICE_URL
+        value: http://prescription-service:5008
+      - key: ADMIN_SERVICE_URL
+        value: http://admin-service:5009
+      - key: AI_SERVICE_URL
+        value: http://ai-service:5010
+
+  - type: web
+    name: auth-service
+    env: docker
+    plan: free
+    autoDeploy: true
+    privateService: true
+    rootDir: backend/services/auth-service
+    dockerfilePath: backend/services/auth-service/Dockerfile
+    envVars:
+      - key: PORT
+        value: "5001"
+      - key: MONGO_URI
+        sync: false
+      - key: JWT_SECRET
+        sync: false
+      - key: JWT_EXPIRES_IN
+        value: 1d
+      - key: INTERNAL_SERVICE_TOKEN
+        sync: false
+
+  - type: web
+    name: patient-service
+    env: docker
+    plan: free
+    autoDeploy: true
+    privateService: true
+    rootDir: backend/services/patient-service
+    dockerfilePath: backend/services/patient-service/Dockerfile
+    envVars:
+      - key: PORT
+        value: "5002"
+      - key: MONGO_URI
+        sync: false
+      - key: JWT_SECRET
+        sync: false
+
+  - type: web
+    name: doctor-service
+    env: docker
+    plan: free
+    autoDeploy: true
+    privateService: true
+    rootDir: backend/services/doctor-service
+    dockerfilePath: backend/services/doctor-service/Dockerfile
+    envVars:
+      - key: PORT
+        value: "5003"
+      - key: MONGO_URI
+        sync: false
+      - key: JWT_SECRET
+        sync: false
+
+  - type: web
+    name: appointment-service
+    env: docker
+    plan: free
+    autoDeploy: true
+    privateService: true
+    rootDir: backend/services/appointment-service
+    dockerfilePath: backend/services/appointment-service/Dockerfile
+    envVars:
+      - key: PORT
+        value: "5004"
+      - key: MONGO_URI
+        sync: false
+      - key: JWT_SECRET
+        sync: false
+      - key: APPOINTMENT_INTERNAL_TOKEN
+        sync: false
+      - key: AUTH_SERVICE_URL
+        value: http://auth-service:5001/api/auth
+      - key: AUTH_INTERNAL_TOKEN
+        sync: false
+      - key: NOTIFICATION_SERVICE_URL
+        value: http://notification-service:5006/api/notifications
+      - key: NOTIFICATION_INTERNAL_TOKEN
+        sync: false
+      - key: APPOINTMENT_TIMEZONE_OFFSET
+        value: "+05:30"
+      - key: APPOINTMENT_PAYMENT_HOLD_MINUTES
+        value: "10"
+      - key: DEFAULT_CONSULTATION_FEE
+        value: "3500"
+
+  - type: web
+    name: payment-service
+    env: docker
+    plan: free
+    autoDeploy: true
+    privateService: true
+    rootDir: backend/services/payment-service
+    dockerfilePath: backend/services/payment-service/Dockerfile
+    envVars:
+      - key: PORT
+        value: "5005"
+      - key: MONGO_URI
+        sync: false
+      - key: JWT_SECRET
+        sync: false
+      - key: APPOINTMENT_SERVICE_URL
+        value: http://appointment-service:5004/api/appointments
+      - key: APPOINTMENT_INTERNAL_TOKEN
+        sync: false
+      - key: STRIPE_SECRET_KEY
+        sync: false
+      - key: PAYMENT_SUCCESS_URL
+        sync: false
+      - key: PAYMENT_CANCEL_URL
+        sync: false
+
+  - type: web
+    name: notification-service
+    env: docker
+    plan: free
+    autoDeploy: true
+    privateService: true
+    rootDir: backend/services/notification-service
+    dockerfilePath: backend/services/notification-service/Dockerfile
+    envVars:
+      - key: PORT
+        value: "5006"
+      - key: MONGO_URI
+        sync: false
+      - key: NOTIFICATION_INTERNAL_TOKEN
+        sync: false
+      - key: SMTP_HOST
+        sync: false
+      - key: SMTP_PORT
+        sync: false
+      - key: SMTP_USER
+        sync: false
+      - key: SMTP_PASS
+        sync: false
+      - key: EMAIL_FROM
+        sync: false
+      - key: TWILIO_ACCOUNT_SID
+        sync: false
+      - key: TWILIO_AUTH_TOKEN
+        sync: false
+      - key: TWILIO_FROM
+        sync: false
+      - key: TWILIO_WHATSAPP_FROM
+        sync: false
+      - key: WHATSAPP_ENABLED
+        value: "false"
+      - key: WHATSAPP_SESSION_NAME
+        value: healthmate-notifier
+      - key: WHATSAPP_AUTH_PATH
+        value: /app/.wwebjs_auth
+      - key: CHROMIUM_PATH
+        sync: false
+
+  - type: web
+    name: telemedicine-service
+    env: docker
+    plan: free
+    autoDeploy: true
+    privateService: true
+    rootDir: backend/services/telemedicine-service
+    dockerfilePath: backend/services/telemedicine-service/Dockerfile
+    envVars:
+      - key: PORT
+        value: "5007"
+      - key: MONGO_URI
+        sync: false
+      - key: AGORA_APP_ID
+        sync: false
+      - key: AGORA_APP_CERTIFICATE
+        sync: false
+      - key: AGORA_TOKEN_EXPIRE_SECONDS
+        value: "3600"
+
+  - type: web
+    name: prescription-service
+    env: docker
+    plan: free
+    autoDeploy: true
+    privateService: true
+    rootDir: backend/services/prescription-service
+    dockerfilePath: backend/services/prescription-service/Dockerfile
+    envVars:
+      - key: PORT
+        value: "5008"
+      - key: MONGO_URI
+        sync: false
+      - key: JWT_SECRET
+        sync: false
+      - key: APPOINTMENT_SERVICE_URL
+        value: http://appointment-service:5004/api/appointments
+      - key: APPOINTMENT_INTERNAL_TOKEN
+        sync: false
+
+  - type: web
+    name: admin-service
+    env: docker
+    plan: free
+    autoDeploy: true
+    privateService: true
+    rootDir: backend/services/admin-service
+    dockerfilePath: backend/services/admin-service/Dockerfile
+    envVars:
+      - key: PORT
+        value: "5009"
+      - key: MONGO_URI
+        sync: false
+      - key: AUTH_MONGO_URI
+        sync: false
+      - key: PAYMENT_MONGO_URI
+        sync: false
+      - key: JWT_SECRET
+        sync: false
+      - key: NOTIFICATION_SERVICE_URL
+        value: http://notification-service:5006/api/notifications
+      - key: NOTIFICATION_INTERNAL_TOKEN
+        sync: false
+
+  - type: web
+    name: ai-service
+    env: docker
+    plan: free
+    autoDeploy: true
+    privateService: true
+    rootDir: backend/services/ai-service
+    dockerfilePath: backend/services/ai-service/Dockerfile
+    envVars:
+      - key: PORT
+        value: "5010"
+      - key: AI_PROVIDER
+        value: groq
+      - key: GROQ_MODEL
+        value: llama-3.3-70b-versatile
+      - key: GROQ_API_KEY
+        sync: false
