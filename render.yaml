@@ -30,12 +30,11 @@ services:
       - key: AI_SERVICE_URL
         value: http://ai-service:5010
 
-  - type: web
+  - type: pserv
     name: auth-service
     env: docker
     plan: free
     autoDeploy: true
-    privateService: true
     rootDir: backend/services/auth-service
     dockerfilePath: backend/services/auth-service/Dockerfile
     envVars:
@@ -50,12 +49,11 @@ services:
       - key: INTERNAL_SERVICE_TOKEN
         sync: false
 
-  - type: web
+  - type: pserv
     name: patient-service
     env: docker
     plan: free
     autoDeploy: true
-    privateService: true
     rootDir: backend/services/patient-service
     dockerfilePath: backend/services/patient-service/Dockerfile
     envVars:
@@ -66,12 +64,11 @@ services:
       - key: JWT_SECRET
         sync: false
 
-  - type: web
+  - type: pserv
     name: doctor-service
     env: docker
     plan: free
     autoDeploy: true
-    privateService: true
     rootDir: backend/services/doctor-service
     dockerfilePath: backend/services/doctor-service/Dockerfile
     envVars:
@@ -82,12 +79,11 @@ services:
       - key: JWT_SECRET
         sync: false
 
-  - type: web
+  - type: pserv
     name: appointment-service
     env: docker
     plan: free
     autoDeploy: true
-    privateService: true
     rootDir: backend/services/appointment-service
     dockerfilePath: backend/services/appointment-service/Dockerfile
     envVars:
@@ -114,12 +110,11 @@ services:
       - key: DEFAULT_CONSULTATION_FEE
         value: "3500"
 
-  - type: web
+  - type: pserv
     name: payment-service
     env: docker
     plan: free
     autoDeploy: true
-    privateService: true
     rootDir: backend/services/payment-service
     dockerfilePath: backend/services/payment-service/Dockerfile
     envVars:
@@ -140,12 +135,11 @@ services:
       - key: PAYMENT_CANCEL_URL
         sync: false
 
-  - type: web
+  - type: pserv
     name: notification-service
     env: docker
     plan: free
     autoDeploy: true
-    privateService: true
     rootDir: backend/services/notification-service
     dockerfilePath: backend/services/notification-service/Dockerfile
     envVars:
@@ -182,12 +176,11 @@ services:
       - key: CHROMIUM_PATH
         sync: false
 
-  - type: web
+  - type: pserv
     name: telemedicine-service
     env: docker
     plan: free
     autoDeploy: true
-    privateService: true
     rootDir: backend/services/telemedicine-service
     dockerfilePath: backend/services/telemedicine-service/Dockerfile
     envVars:
@@ -202,12 +195,11 @@ services:
       - key: AGORA_TOKEN_EXPIRE_SECONDS
         value: "3600"
 
-  - type: web
+  - type: pserv
     name: prescription-service
     env: docker
     plan: free
     autoDeploy: true
-    privateService: true
     rootDir: backend/services/prescription-service
     dockerfilePath: backend/services/prescription-service/Dockerfile
     envVars:
@@ -222,12 +214,11 @@ services:
       - key: APPOINTMENT_INTERNAL_TOKEN
         sync: false
 
-  - type: web
+  - type: pserv
     name: admin-service
     env: docker
     plan: free
     autoDeploy: true
-    privateService: true
     rootDir: backend/services/admin-service
     dockerfilePath: backend/services/admin-service/Dockerfile
     envVars:
@@ -246,12 +237,11 @@ services:
       - key: NOTIFICATION_INTERNAL_TOKEN
         sync: false
 
-  - type: web
+  - type: pserv
     name: ai-service
     env: docker
     plan: free
     autoDeploy: true
-    privateService: true
     rootDir: backend/services/ai-service
     dockerfilePath: backend/services/ai-service/Dockerfile
     envVars:
