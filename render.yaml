@@ -5,7 +5,7 @@ services:
     plan: free
     autoDeploy: true
     rootDir: backend/gateway
-    dockerfilePath: backend/gateway/Dockerfile
+    dockerfilePath: Dockerfile
     envVars:
       - key: PORT
         value: "5000"
@@ -36,7 +36,7 @@ services:
     plan: free
     autoDeploy: true
     rootDir: backend/services/auth-service
-    dockerfilePath: backend/services/auth-service/Dockerfile
+    dockerfilePath: Dockerfile
     envVars:
       - key: PORT
         value: "5001"
@@ -55,7 +55,7 @@ services:
     plan: free
     autoDeploy: true
     rootDir: backend/services/patient-service
-    dockerfilePath: backend/services/patient-service/Dockerfile
+    dockerfilePath: Dockerfile
     envVars:
       - key: PORT
         value: "5002"
@@ -70,7 +70,7 @@ services:
     plan: free
     autoDeploy: true
     rootDir: backend/services/doctor-service
-    dockerfilePath: backend/services/doctor-service/Dockerfile
+    dockerfilePath: Dockerfile
     envVars:
       - key: PORT
         value: "5003"
@@ -85,7 +85,7 @@ services:
     plan: free
     autoDeploy: true
     rootDir: backend/services/appointment-service
-    dockerfilePath: backend/services/appointment-service/Dockerfile
+    dockerfilePath: Dockerfile
     envVars:
       - key: PORT
         value: "5004"
@@ -116,7 +116,7 @@ services:
     plan: free
     autoDeploy: true
     rootDir: backend/services/payment-service
-    dockerfilePath: backend/services/payment-service/Dockerfile
+    dockerfilePath: Dockerfile
     envVars:
       - key: PORT
         value: "5005"
@@ -141,7 +141,7 @@ services:
     plan: free
     autoDeploy: true
     rootDir: backend/services/notification-service
-    dockerfilePath: backend/services/notification-service/Dockerfile
+    dockerfilePath: Dockerfile
     envVars:
       - key: PORT
         value: "5006"
@@ -182,7 +182,7 @@ services:
     plan: free
     autoDeploy: true
     rootDir: backend/services/telemedicine-service
-    dockerfilePath: backend/services/telemedicine-service/Dockerfile
+    dockerfilePath: Dockerfile
     envVars:
       - key: PORT
         value: "5007"
@@ -201,7 +201,7 @@ services:
     plan: free
     autoDeploy: true
     rootDir: backend/services/prescription-service
-    dockerfilePath: backend/services/prescription-service/Dockerfile
+    dockerfilePath: Dockerfile
     envVars:
       - key: PORT
         value: "5008"
@@ -220,7 +220,7 @@ services:
     plan: free
     autoDeploy: true
     rootDir: backend/services/admin-service
-    dockerfilePath: backend/services/admin-service/Dockerfile
+    dockerfilePath: Dockerfile
     envVars:
       - key: PORT
         value: "5009"
@@ -243,7 +243,7 @@ services:
     plan: free
     autoDeploy: true
     rootDir: backend/services/ai-service
-    dockerfilePath: backend/services/ai-service/Dockerfile
+    dockerfilePath: Dockerfile
     envVars:
       - key: PORT
         value: "5010"
