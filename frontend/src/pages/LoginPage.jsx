@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import AuthLayout from "../components/AuthLayout";
 import { loginUser } from "../services/authApi";
@@ -9,6 +9,7 @@ function LoginPage() {
 	const [formData, setFormData] = useState({ email: "", password: "" });
 	const [isLoading, setIsLoading] = useState(false);
 	const [errorMessage, setErrorMessage] = useState("");
+	const isSubmittingRef = useRef(false);
 
 	const handleChange = (event) => {
 		setFormData((prev) => ({ ...prev, [event.target.name]: event.target.value }));
@@ -16,6 +17,11 @@ function LoginPage() {
 
 	const handleSubmit = async (event) => {
 		event.preventDefault();
+		if (isSubmittingRef.current) {
+			return;
+		}
+
+		isSubmittingRef.current = true;
 		setErrorMessage("");
 		setIsLoading(true);
 
@@ -32,6 +38,7 @@ function LoginPage() {
 			}
 		} finally {
 			setIsLoading(false);
+			isSubmittingRef.current = false;
 		}
 	};
 
