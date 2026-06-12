@@ -125,7 +125,10 @@ function DoctorSchedulePage({ onOpenTelemedicine = () => {} }) {
 				setLoading(false);
 			}
 		};
-		loadData();
+		const timer = setTimeout(() => {
+			loadData();
+		}, 300);
+		return () => clearTimeout(timer);
 	}, [activeTab, doctorId, token]);
 
 	const handleSaveAvailability = async () => {

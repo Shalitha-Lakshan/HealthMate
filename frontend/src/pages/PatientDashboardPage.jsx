@@ -463,7 +463,10 @@ function PatientDashboardPage() {
 		if (!formData.doctorId || !formData.appointmentDate) {
 			return;
 		}
-		loadSlots(formData.doctorId, formData.appointmentDate);
+		const timer = setTimeout(() => {
+			loadSlots(formData.doctorId, formData.appointmentDate);
+		}, 300);
+		return () => clearTimeout(timer);
 	}, [formData.doctorId, formData.appointmentDate]);
 
 	const handleAppointmentChange = (event) => {
@@ -996,7 +999,9 @@ function PatientDashboardPage() {
 			return;
 		}
 
-		loadDoctors();
+		if (doctors.length === 0) {
+			loadDoctors();
+		}
 
 		if (activeMenuItem === "Appointments") {
 			loadAppointments();
@@ -1009,7 +1014,7 @@ function PatientDashboardPage() {
 		}
 
 		loadMyMedicalReports();
-	}, [activeMenuItem]);
+	}, [activeMenuItem, doctors.length]);
 
 	useEffect(() => {
 		if (activeMenuItem !== "Overview") {

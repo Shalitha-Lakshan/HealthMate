@@ -97,6 +97,36 @@ const proxyJsonRequest = async ({ req, res, upstreamBaseUrl, upstreamPath }) => 
 app.use(cors());
 app.use(express.json());
 
+// In-memory rate limiter middleware to prevent excessive API requests
+const rateLimitStore = {};
+const rateLimiter = (windowMs, max) => {
+	return (req, res, next) => {
+		const ip = req.headers["x-forwarded-for"] || req.socket.remoteAddress;
+		const now = Date.now();
+
+		if (!rateLimitStore[ip]) {
+			rateLimitStore[ip] = [];
+		}
+
+		// Filter out timestamps older than the window
+		rateLimitStore[ip] = rateLimitStore[ip].filter((time) => now - time < windowMs);
+
+		if (rateLimitStore[ip].length >= max) {
+			return res.status(429).json({
+				message: "Too many requests from this IP, please try again later.",
+			});
+		}
+
+		rateLimitStore[ip].push(now);
+		next();
+	};
+};
+
+// Apply rate limiter: 100 requests per 1 minute in production, less restrictive in development
+const limiterWindow = 60 * 1000;
+const limiterMax = process.env.NODE_ENV === "production" ? 100 : 1000;
+app.use(rateLimiter(limiterWindow, limiterMax));
+
 app.use("/api/auth", async (req, res) => {
 	return proxyJsonRequest({
 		req,
