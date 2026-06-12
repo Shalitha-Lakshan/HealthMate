@@ -10,25 +10,55 @@ services:
       - key: PORT
         value: "5000"
       - key: AUTH_SERVICE_URL
-        value: http://auth-service:5001
+        fromService:
+          name: auth-service
+          type: web
+          property: hostport
       - key: PATIENT_SERVICE_URL
-        value: http://patient-service:5002
+        fromService:
+          name: patient-service
+          type: web
+          property: hostport
       - key: DOCTOR_SERVICE_URL
-        value: http://doctor-service:5003
+        fromService:
+          name: doctor-service
+          type: web
+          property: hostport
       - key: APPOINTMENT_SERVICE_URL
-        value: http://appointment-service:5004
+        fromService:
+          name: appointment-service
+          type: web
+          property: hostport
       - key: PAYMENT_SERVICE_URL
-        value: http://payment-service:5005
+        fromService:
+          name: payment-service
+          type: web
+          property: hostport
       - key: NOTIFICATION_SERVICE_URL
-        value: http://notification-service:5006
+        fromService:
+          name: notification-service
+          type: web
+          property: hostport
       - key: TELEMEDICINE_SERVICE_URL
-        value: http://telemedicine-service:5007
+        fromService:
+          name: telemedicine-service
+          type: web
+          property: hostport
       - key: PRESCRIPTION_SERVICE_URL
-        value: http://prescription-service:5008
+        fromService:
+          name: prescription-service
+          type: web
+          property: hostport
       - key: ADMIN_SERVICE_URL
-        value: http://admin-service:5009
+        fromService:
+          name: admin-service
+          type: web
+          property: hostport
       - key: AI_SERVICE_URL
-        value: http://ai-service:5010
+        fromService:
+          name: ai-service
+          type: web
+          property: hostport
 
   - type: web
     name: auth-service
@@ -96,11 +126,17 @@ services:
       - key: APPOINTMENT_INTERNAL_TOKEN
         sync: false
       - key: AUTH_SERVICE_URL
-        value: http://auth-service:5001/api/auth
+        fromService:
+          name: auth-service
+          type: web
+          property: hostport
       - key: AUTH_INTERNAL_TOKEN
         sync: false
       - key: NOTIFICATION_SERVICE_URL
-        value: http://notification-service:5006/api/notifications
+        fromService:
+          name: notification-service
+          type: web
+          property: hostport
       - key: NOTIFICATION_INTERNAL_TOKEN
         sync: false
       - key: APPOINTMENT_TIMEZONE_OFFSET
@@ -125,7 +161,10 @@ services:
       - key: JWT_SECRET
         sync: false
       - key: APPOINTMENT_SERVICE_URL
-        value: http://appointment-service:5004/api/appointments
+        fromService:
+          name: appointment-service
+          type: web
+          property: hostport
       - key: APPOINTMENT_INTERNAL_TOKEN
         sync: false
       - key: STRIPE_SECRET_KEY
@@ -210,7 +249,10 @@ services:
       - key: JWT_SECRET
         sync: false
       - key: APPOINTMENT_SERVICE_URL
-        value: http://appointment-service:5004/api/appointments
+        fromService:
+          name: appointment-service
+          type: web
+          property: hostport
       - key: APPOINTMENT_INTERNAL_TOKEN
         sync: false
 
@@ -233,7 +275,10 @@ services:
       - key: JWT_SECRET
         sync: false
       - key: NOTIFICATION_SERVICE_URL
-        value: http://notification-service:5006/api/notifications
+        fromService:
+          name: notification-service
+          type: web
+          property: hostport
       - key: NOTIFICATION_INTERNAL_TOKEN
         sync: false
 

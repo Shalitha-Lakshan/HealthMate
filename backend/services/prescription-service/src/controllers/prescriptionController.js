@@ -1,6 +1,28 @@
 const Prescription = require("../models/Prescription");
 
-const APPOINTMENT_SERVICE_URL = process.env.APPOINTMENT_SERVICE_URL || "http://localhost:5004/api/appointments";
+const normalizeServiceUrl = (urlStr, defaultVal, suffixPath) => {
+	let value = urlStr || defaultVal;
+	if (!value) return "";
+	value = value.trim();
+	if (!value.startsWith("http://") && !value.startsWith("https://")) {
+		value = `http://${value}`;
+	}
+	try {
+		const parsed = new URL(value);
+		if ((parsed.pathname === "/" || parsed.pathname === "") && suffixPath) {
+			parsed.pathname = suffixPath;
+		}
+		return parsed.toString().replace(/\/$/, "");
+	} catch (e) {
+		return value.replace(/\/$/, "");
+	}
+};
+
+const APPOINTMENT_SERVICE_URL = normalizeServiceUrl(
+	process.env.APPOINTMENT_SERVICE_URL,
+	"http://localhost:5004/api/appointments",
+	"/api/appointments"
+);
 const APPOINTMENT_INTERNAL_TOKEN = process.env.APPOINTMENT_INTERNAL_TOKEN || "healthmate-internal-token";
 
 const getRequesterId = (user = {}) => {

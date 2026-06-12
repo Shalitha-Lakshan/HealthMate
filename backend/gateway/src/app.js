@@ -2,16 +2,26 @@ const express = require("express");
 const cors = require("cors");
 
 const app = express();
-const AUTH_SERVICE_URL = process.env.AUTH_SERVICE_URL || "http://localhost:5001";
-const PATIENT_SERVICE_URL = process.env.PATIENT_SERVICE_URL || "http://localhost:5002";
-const DOCTOR_SERVICE_URL = process.env.DOCTOR_SERVICE_URL || "http://localhost:5003";
-const APPOINTMENT_SERVICE_URL = process.env.APPOINTMENT_SERVICE_URL || "http://localhost:5004";
-const PAYMENT_SERVICE_URL = process.env.PAYMENT_SERVICE_URL || "http://localhost:5005";
-const NOTIFICATION_SERVICE_URL = process.env.NOTIFICATION_SERVICE_URL || "http://localhost:5006";
-const TELEMEDICINE_SERVICE_URL = process.env.TELEMEDICINE_SERVICE_URL || "http://localhost:5007";
-const PRESCRIPTION_SERVICE_URL = process.env.PRESCRIPTION_SERVICE_URL || "http://localhost:5008";
-const ADMIN_SERVICE_URL = process.env.ADMIN_SERVICE_URL || "http://localhost:5009";
-const AI_SERVICE_URL = process.env.AI_SERVICE_URL || "http://localhost:5010";
+const normalizeUrl = (urlStr, defaultVal) => {
+	let value = urlStr || defaultVal;
+	if (!value) return "";
+	value = value.trim();
+	if (!value.startsWith("http://") && !value.startsWith("https://")) {
+		value = `http://${value}`;
+	}
+	return value;
+};
+
+const AUTH_SERVICE_URL = normalizeUrl(process.env.AUTH_SERVICE_URL, "http://localhost:5001");
+const PATIENT_SERVICE_URL = normalizeUrl(process.env.PATIENT_SERVICE_URL, "http://localhost:5002");
+const DOCTOR_SERVICE_URL = normalizeUrl(process.env.DOCTOR_SERVICE_URL, "http://localhost:5003");
+const APPOINTMENT_SERVICE_URL = normalizeUrl(process.env.APPOINTMENT_SERVICE_URL, "http://localhost:5004");
+const PAYMENT_SERVICE_URL = normalizeUrl(process.env.PAYMENT_SERVICE_URL, "http://localhost:5005");
+const NOTIFICATION_SERVICE_URL = normalizeUrl(process.env.NOTIFICATION_SERVICE_URL, "http://localhost:5006");
+const TELEMEDICINE_SERVICE_URL = normalizeUrl(process.env.TELEMEDICINE_SERVICE_URL, "http://localhost:5007");
+const PRESCRIPTION_SERVICE_URL = normalizeUrl(process.env.PRESCRIPTION_SERVICE_URL, "http://localhost:5008");
+const ADMIN_SERVICE_URL = normalizeUrl(process.env.ADMIN_SERVICE_URL, "http://localhost:5009");
+const AI_SERVICE_URL = normalizeUrl(process.env.AI_SERVICE_URL, "http://localhost:5010");
 
 const buildTargetUrl = ({ baseUrl, requestPath = "", query = {} }) => {
 	const normalizedBase = baseUrl.endsWith("/") ? baseUrl.slice(0, -1) : baseUrl;

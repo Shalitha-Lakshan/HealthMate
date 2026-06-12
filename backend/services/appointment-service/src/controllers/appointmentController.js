@@ -10,9 +10,35 @@ const APPOINTMENT_TIMEZONE_OFFSET = process.env.APPOINTMENT_TIMEZONE_OFFSET || "
 const PAYMENT_HOLD_MINUTES = Number(process.env.APPOINTMENT_PAYMENT_HOLD_MINUTES || 10);
 const DEFAULT_CONSULTATION_FEE = Number(process.env.DEFAULT_CONSULTATION_FEE || 3500);
 const APPOINTMENT_INTERNAL_TOKEN = process.env.APPOINTMENT_INTERNAL_TOKEN || "healthmate-internal-token";
-const AUTH_SERVICE_URL = process.env.AUTH_SERVICE_URL || "http://localhost:5001/api/auth";
+const normalizeServiceUrl = (urlStr, defaultVal, suffixPath) => {
+	let value = urlStr || defaultVal;
+	if (!value) return "";
+	value = value.trim();
+	if (!value.startsWith("http://") && !value.startsWith("https://")) {
+		value = `http://${value}`;
+	}
+	try {
+		const parsed = new URL(value);
+		if ((parsed.pathname === "/" || parsed.pathname === "") && suffixPath) {
+			parsed.pathname = suffixPath;
+		}
+		return parsed.toString().replace(/\/$/, "");
+	} catch (e) {
+		return value.replace(/\/$/, "");
+	}
+};
+
+const AUTH_SERVICE_URL = normalizeServiceUrl(
+	process.env.AUTH_SERVICE_URL,
+	"http://localhost:5001/api/auth",
+	"/api/auth"
+);
 const AUTH_INTERNAL_TOKEN = process.env.AUTH_INTERNAL_TOKEN || "healthmate-internal-token";
-const NOTIFICATION_SERVICE_URL = process.env.NOTIFICATION_SERVICE_URL || "http://localhost:5006/api/notifications";
+const NOTIFICATION_SERVICE_URL = normalizeServiceUrl(
+	process.env.NOTIFICATION_SERVICE_URL,
+	"http://localhost:5006/api/notifications",
+	"/api/notifications"
+);
 const NOTIFICATION_INTERNAL_TOKEN = process.env.NOTIFICATION_INTERNAL_TOKEN || "healthmate-internal-token";
 
 const getRequesterId = (user = {}) => {
