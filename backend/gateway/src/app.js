@@ -85,9 +85,11 @@ const proxyJsonRequest = async ({ req, res, upstreamBaseUrl, upstreamPath }) => 
 		const text = await upstreamResponse.text();
 		return res.send(text);
 	} catch (error) {
+		console.error("gateway proxy request failed:", error);
 		return res.status(502).json({
 			message: "gateway proxy request failed",
 			error: error.message,
+			cause: error.cause ? { message: error.cause.message, code: error.cause.code } : undefined,
 		});
 	}
 };
