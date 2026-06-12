@@ -94,6 +94,8 @@ const proxyJsonRequest = async ({ req, res, upstreamBaseUrl, upstreamPath }) => 
 	}
 };
 
+app.set("trust proxy", 1);
+
 app.use(cors());
 app.use(express.json());
 
@@ -101,7 +103,16 @@ app.use(express.json());
 const rateLimitStore = {};
 const rateLimiter = (windowMs, max) => {
 	return (req, res, next) => {
-		const ip = req.headers["x-forwarded-for"] || req.socket.remoteAddress;
+		// Bypass rate limiting for authentication requests (login, register)
+		if (req.path.startsWith("/api/auth")) {
+			return next();
+		}
+
+		// Correctly extract the client IP (first IP in the comma-separated x-forwarded-for list)
+		const forwardedFor = req.headers["x-forwarded-for"];
+		const ip = forwardedFor 
+			? forwardedFor.split(",")[0].trim() 
+			: req.socket.remoteAddress;
 		const now = Date.now();
 
 		if (!rateLimitStore[ip]) {
